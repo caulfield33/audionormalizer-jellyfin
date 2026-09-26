@@ -50,7 +50,9 @@ https://raw.githubusercontent.com/caulfield33/audionormalizer-jellyfin/master/ma
 ```
 
 The plugin then appears in the catalogue and updates like any other. One manifest serves both
-server lines: 10.11 gets the `1.0.0.x` build, 12 gets `2.0.0.x`.
+server lines: 10.11 gets the `1.x` build, 12 gets the `2.x` one. That leading digit is the
+server line rather than part of the release version, so release `0.0.5` ships as `1.0.0.5`
+and `2.0.0.5`.
 
 ### By hand
 
@@ -67,8 +69,8 @@ Download the zip matching your server from
 ./build.sh both
 ```
 
-The zip lands in `artifacts/`. Pushing a `v<number>` tag makes the workflow build both
-variants, publish them and regenerate `manifest.json`.
+The zip lands in `artifacts/`. Pushing a version tag such as `0.0.5` or `v1.2.0` makes the
+workflow build both variants, publish them and regenerate `manifest.json`.
 
 ---
 

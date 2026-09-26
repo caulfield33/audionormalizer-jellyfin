@@ -9,9 +9,13 @@
 #
 # Needs the matching .NET SDK and access to nuget.org for the Jellyfin packages.
 #
-# Version scheme (see the csproj for the reasoning): the 10.11 build is 1.0.0.x and
-# the 12 build is 2.0.0.x, so a single repository manifest can serve both servers.
-# Set RELEASE=n to bump the last component: RELEASE=3 ./build.sh both
+# Version scheme (see the csproj for the reasoning). RELEASE carries your own version, one to
+# three numbers, and the build prepends the Jellyfin line:
+#
+#   RELEASE=0.0.5 ./build.sh both   ->  10.11 build 1.0.0.5,  12 build 2.0.0.5
+#
+# The leading 1 or 2 is not part of your version - it is what keeps the 12 build sorting above
+# the 10.11 build in a shared manifest, which is the whole reason one manifest can serve both.
 
 set -euo pipefail
 
@@ -21,11 +25,22 @@ ARTIFACTS="$ROOT/artifacts"
 PLUGIN_NAME="Audio Normalizer"
 PLUGIN_GUID="2a968ad7-6168-44c8-b149-cf94eb870b25"
 PLUGIN_OWNER="${PLUGIN_OWNER:-Vasyl Lukinchuk}"
-# Shown in the plugin catalogue. The release workflow passes real notes; the fallback
-# points at the GitHub release rather than lying with a fixed "Initial release." It goes
-# straight into meta.json, so keep it free of quotes and newlines.
+
+# Shown in the plugin catalogue. The release workflow passes real notes; the fallback points
+# at the GitHub release rather than lying with a fixed "Initial release." It goes straight
+# into meta.json, so keep it free of quotes and newlines.
 CHANGELOG="${CHANGELOG:-See the release notes for this version.}"
-RELEASE="${RELEASE:-0}"
+
+RELEASE="${RELEASE:-0.0.0}"
+
+# Validated here rather than in the workflow: this is where the version string is assembled,
+# so a hand-run build is checked too. One to three numbers, because the Jellyfin line prefix
+# takes the first slot and .NET rejects a five-component assembly version. Each part must also
+# fit in 16 bits, which is the AssemblyVersion limit.
+if ! [[ "$RELEASE" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    echo "RELEASE must be one to three numbers, for example 0.0.5 or 1.2.0 - got '$RELEASE'." >&2
+    exit 1
+fi
 
 build_one() {
     local jfver="$1" tfm abi outdir stage version
@@ -35,8 +50,8 @@ build_one() {
     # against, so a targetAbi lower than the referenced package is a promise the binary
     # cannot keep and the plugin loads as NotSupported.
     case "$jfver" in
-        12)    tfm="net10.0"; abi="12.0.0.0";  version="2.0.0.$RELEASE" ;;
-        10.11) tfm="net9.0";  abi="10.11.0.0"; version="1.0.0.$RELEASE" ;;
+        12)    tfm="net10.0"; abi="12.0.0.0";  version="2.$RELEASE" ;;
+        10.11) tfm="net9.0";  abi="10.11.0.0"; version="1.$RELEASE" ;;
         *) echo "Unknown Jellyfin version '$jfver'. Use 12 or 10.11." >&2; return 1 ;;
     esac
 

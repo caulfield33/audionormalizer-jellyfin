@@ -65,8 +65,8 @@ dotnet build src/Jellyfin.Plugin.AudioNormalizer/Jellyfin.Plugin.AudioNormalizer
   -c Release -p:UseJellyfinStubs=true
 
 # The real build (needs nuget.org and the matching SDK):
-./build.sh          # Jellyfin 12.x  -> net10.0, plugin version 2.0.0.x
-./build.sh 10.11    # Jellyfin 10.11 -> net9.0,  plugin version 1.0.0.x
+./build.sh          # Jellyfin 12.x  -> net10.0, plugin version 2.<RELEASE>
+./build.sh 10.11    # Jellyfin 10.11 -> net9.0,  plugin version 1.<RELEASE>
 ./build.sh both
 ```
 
@@ -210,7 +210,9 @@ regress the output.
 15. **Manifest version scheme.** The server keeps entries with `targetAbi <= its version`,
     then installs the **highest plugin version** left, and never checks which .NET the DLL
     targets. So the newer-server build must carry the higher version:
-    `1.0.0.x` / targetAbi `10.11.0.0` for Jellyfin 10.11, `2.0.0.x` / `12.0.0.0` for 12.
+    `1.<your version>` / targetAbi `10.11.0.0` for Jellyfin 10.11, `2.<your version>` /
+    `12.0.0.0` for 12. Only the leading component is spent on this; a tag of `0.0.5` ships
+    as `1.0.0.5` and `2.0.0.5`.
     Break this and a Jellyfin 12 box installs the net9.0 assembly; it fails loudly at load
     (`Failed to load assembly ... Disabling plugin`) rather than misbehaving.
 
@@ -286,7 +288,7 @@ and read `I`, `LRA`, `True peak` from the summary.
 dotnet build src/Jellyfin.Plugin.AudioNormalizer/Jellyfin.Plugin.AudioNormalizer.csproj -c Release -p:UseJellyfinStubs=true
 
 # package for both servers
-RELEASE=2 ./build.sh both
+RELEASE=0.0.5 ./build.sh both
 
 # regenerate the plugin repository manifest
 ./tools/make-manifest.sh "https://github.com/USER/REPO/releases/download/v2" \
@@ -296,8 +298,9 @@ RELEASE=2 ./build.sh both
 ./tools/normalize-library.sh --dry-run /media/films
 ```
 
-Release flow: `git tag v2 && git push origin v2` — CI builds both, publishes them, and
-commits the regenerated manifest. Tags must be `v<number>`.
+Release flow: `git tag 0.0.5 && git push origin 0.0.5` — CI builds both, publishes them, and
+commits the regenerated manifest. The tag is one to three numbers with an optional leading
+`v`; `build.sh` prepends the Jellyfin line and rejects anything else.
 
 ---
 

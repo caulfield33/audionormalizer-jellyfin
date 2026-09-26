@@ -1,11 +1,16 @@
 name: release
 
-# Push a tag like v1, v2, v3 (a plain counter, nothing else) and this builds both variants, publishes them as
-# release assets, regenerates manifest.json to point at those assets, and commits it
-# back to the default branch. Jellyfin then sees the new version on its next check.
+# Push a tag carrying your own version - 0.0.5, v1.2.0, 3 - and this builds both variants,
+# publishes them as release assets, regenerates manifest.json to point at those assets, and
+# commits it back to the default branch. Jellyfin sees the new version on its next check.
+#
+# The tag is one to three numbers, with an optional leading "v". build.sh prepends the Jellyfin
+# line to it, so 0.0.5 ships as 1.0.0.5 for Jellyfin 10.11 and 2.0.0.5 for Jellyfin 12.
 on:
   push:
-    tags: [ 'v*' ]
+    tags:
+      - 'v*'
+      - '[0-9]*'
   workflow_dispatch:
     inputs:
       tag:
@@ -37,18 +42,13 @@ jobs:
 
       - name: Build both variants
         env:
-          # v3 -> RELEASE=3, so plugin versions become 1.0.0.3 and 2.0.0.3
+          # Tag 0.0.5 -> RELEASE=0.0.5, so the plugin ships as 1.0.0.5 and 2.0.0.5.
           TAG: ${{ steps.tag.outputs.name }}
           REPO: ${{ github.repository }}
         run: |
-          RELEASE="${TAG#v}"
-          # The last component of a .NET version is a single number, so the tag has to be
-          # a plain counter. Fail loudly rather than emitting an invalid version.
-          if ! [[ "$RELEASE" =~ ^[0-9]+$ ]]; then
-            echo "::error::Tag '$TAG' must be v<number>, for example v1, v2, v3." >&2
-            exit 1
-          fi
-          export RELEASE
+          # The shape of RELEASE is checked by build.sh, which is where the version string is
+          # actually assembled - one rule, one place. All this step does is drop the "v".
+          export RELEASE="${TAG#v}"
           # Shows up in the plugin catalogue, so point it at the release notes this tag generates.
           export CHANGELOG="Release $TAG - https://github.com/$REPO/releases/tag/$TAG"
           chmod +x build.sh tools/make-manifest.sh

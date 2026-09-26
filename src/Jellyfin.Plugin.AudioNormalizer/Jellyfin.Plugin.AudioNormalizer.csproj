@@ -26,14 +26,18 @@
 
     <!--
       Version scheme. One repository manifest can serve both Jellyfin lines because the
-      server keeps only entries whose targetAbi is <= its own version, then installs the
-      HIGHEST plugin version left. So the build for the newer server must carry the higher
-      plugin version, or a Jellyfin 12 box would install the 10.11 assembly:
+      server keeps only entries whose targetAbi is <= its own version, then takes the
+      HIGHEST plugin version left - InstallationManager sorts by version alone and never
+      prefers a closer targetAbi. So the build for the newer server must always sort above
+      the older one, or a Jellyfin 12 box would install the net9.0 assembly.
 
-        Jellyfin 10.11 -> plugin 1.0.0.x   (targetAbi 10.11.0.0)
-        Jellyfin 12    -> plugin 2.0.0.x   (targetAbi 12.0.0.0)
+      That is paid for with the leading component, and only that one. Your own version goes
+      in the rest, so RELEASE=0.0.5 ships as:
 
-      Bump only the last component for a new release. Override with -p:PluginVersion=.
+        Jellyfin 10.11 -> plugin 1.0.0.5   (targetAbi 10.11.0.0)
+        Jellyfin 12    -> plugin 2.0.0.5   (targetAbi 12.0.0.0)
+
+      build.sh assembles that from RELEASE. Override the whole string with -p:PluginVersion=.
     -->
     <PluginVersion Condition="'$(PluginVersion)' == '' and '$(JellyfinVersion)' == '12'">2.0.0.0</PluginVersion>
     <PluginVersion Condition="'$(PluginVersion)' == '' and '$(JellyfinVersion)' == '10.11'">1.0.0.0</PluginVersion>
