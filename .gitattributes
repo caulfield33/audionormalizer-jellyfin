@@ -1,0 +1,2 @@
+# CI runs these on Linux; a CRLF shebang there fails with "bad interpreter".
+*.sh text eol=lf
