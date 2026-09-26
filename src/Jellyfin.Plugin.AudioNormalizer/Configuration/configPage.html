@@ -1,10 +1,18 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <title>Audio Normalizer</title>
 </head>
 <body>
+<!--
+  Visible text is English here and translated at runtime from configStrings.js, keyed by the
+  data-an-i18n attributes. Keeping real English in the markup means the page is still usable if
+  the strings file ever fails to load.
+    data-an-i18n        - replaces textContent
+    data-an-i18n-html   - replaces innerHTML, for the few strings carrying <strong>/<em>/<code>
+    data-an-i18n-title  - replaces the title attribute (column tooltips)
+-->
 <div id="AudioNormalizerConfigPage"
      data-role="page"
      class="page type-interior pluginConfigurationPage"
@@ -14,303 +22,315 @@
 
             <div class="verticalSection">
                 <h2 class="sectionTitle">Audio Normalizer</h2>
-                <p class="fieldDescription">
-                    Створює <strong>додаткову</strong> аудіодоріжку поруч із фільмом: діалоги гучніші,
-                    вибухи тихіші. Оригінальний файл не змінюється — у плеєрі просто з'являється
-                    ще один варіант звуку, між якими можна перемикатись.
+                <p class="fieldDescription" data-an-i18n-html="intro">
+                    Builds an <strong>additional</strong> audio track next to a film: louder dialogue,
+                    quieter explosions. The original file is not modified - the player simply gains one
+                    more audio option, and you can switch between them freely.
                 </p>
+                <div class="selectContainer" style="max-width:18em;">
+                    <label class="selectLabel" for="anLanguage" data-an-i18n="lbl.language">Page language</label>
+                    <select is="emby-select" id="anLanguage">
+                        <option value="en">English</option>
+                        <option value="uk">Українська</option>
+                    </select>
+                </div>
             </div>
 
             <div class="verticalSection" id="anDiagnostics">
-                <h3 class="sectionTitle">Стан системи</h3>
-                <div id="anDiagBody" class="fieldDescription">Перевіряю…</div>
+                <h3 class="sectionTitle" data-an-i18n="diag.title">System status</h3>
+                <div id="anDiagBody" class="fieldDescription" data-an-i18n="diag.checking">Checking…</div>
             </div>
 
             <form id="anConfigForm">
 
                 <div class="verticalSection">
-                    <h3 class="sectionTitle">Пороги гучності</h3>
+                    <h3 class="sectionTitle" data-an-i18n="sec.thresholds">Loudness thresholds</h3>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anTargetLufs">
-                            Цільова гучність (LUFS)
+                        <label class="inputLabel inputLabelUnfocused" for="anTargetLufs" data-an-i18n="lbl.targetLufs">
+                            Target loudness (LUFS)
                         </label>
                         <input is="emby-input" type="number" id="anTargetLufs" step="0.5" min="-40" max="-5" />
-                        <div class="fieldDescription">
-                            Середній рівень готової доріжки. −16 підходить для перегляду вдома,
-                            −23 — студійний стандарт (тихіше).
+                        <div class="fieldDescription" data-an-i18n="desc.targetLufs">
+                            The average level of the finished track. −16 suits watching at home,
+                            −23 is the broadcast standard (quieter).
                         </div>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anMaxPeak">
-                            Максимальний пік (dBTP) — верхній поріг
+                        <label class="inputLabel inputLabelUnfocused" for="anMaxPeak" data-an-i18n="lbl.maxPeak">
+                            Maximum peak (dBTP) - the ceiling
                         </label>
                         <input is="emby-input" type="number" id="anMaxPeak" step="0.1" min="-9" max="0" />
-                        <div class="fieldDescription">
-                            Стеля, вище якої звук не підніметься. −1.5 безпечно для будь-якого пристрою.
+                        <div class="fieldDescription" data-an-i18n="desc.maxPeak">
+                            Nothing rises above this. −1.5 is safe on any device.
                         </div>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anTargetLra">
-                            Допустима різниця тихе/гучне (LU)
+                        <label class="inputLabel inputLabelUnfocused" for="anTargetLra" data-an-i18n="lbl.targetLra">
+                            Allowed quiet-to-loud range (LU)
                         </label>
                         <input is="emby-input" type="number" id="anTargetLra" step="0.5" min="1" max="30" />
-                        <div class="fieldDescription">
-                            Скільки динаміки лишити. Бойовик зазвичай має 20–25 LU. 9 — комфортно вночі,
-                            14 — ще «кінематографічно».
+                        <div class="fieldDescription" data-an-i18n="desc.targetLra">
+                            How much dynamics to keep. An action film usually has 20-25 LU.
+                            9 is comfortable at night, 14 still feels cinematic.
                         </div>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anSkipBelow">
-                            Не обробляти, якщо різниця менша за (LU)
+                        <label class="inputLabel inputLabelUnfocused" for="anSkipBelow" data-an-i18n="lbl.skipBelow">
+                            Skip if the range is below (LU)
                         </label>
                         <input is="emby-input" type="number" id="anSkipBelow" step="0.5" min="0" max="20" />
-                        <div class="fieldDescription">
-                            Рівному звуку друга доріжка нічого не дасть — тільки місце на диску.
+                        <div class="fieldDescription" data-an-i18n="desc.skipBelow">
+                            Even audio gains nothing from a second track - only disk space.
                         </div>
                     </div>
                 </div>
 
                 <div class="verticalSection">
-                    <h3 class="sectionTitle">Обробка</h3>
+                    <h3 class="sectionTitle" data-an-i18n="sec.processing">Processing</h3>
 
                     <div class="selectContainer">
-                        <label class="selectLabel" for="anEngine">Алгоритм</label>
+                        <label class="selectLabel" for="anEngine" data-an-i18n="lbl.engine">Engine</label>
                         <select is="emby-select" id="anEngine">
-                            <option value="0">dynaudnorm — підтягує тихе і притискає гучне (рекомендовано)</option>
-                            <option value="1">speechnorm — орієнтований на мовлення</option>
-                            <option value="2">Компресор — найм'якший, зберігає найбільше динаміки</option>
-                            <option value="3">Лише вирівняти гучність, динаміку не чіпати</option>
+                            <option value="Dynaudnorm" data-an-i18n="opt.engine.Dynaudnorm">dynaudnorm - lifts the quiet, holds back the loud (recommended)</option>
+                            <option value="SpeechNorm" data-an-i18n="opt.engine.SpeechNorm">speechnorm - speech oriented</option>
+                            <option value="Compressor" data-an-i18n="opt.engine.Compressor">Compressor - the gentlest, keeps the most dynamics</option>
+                            <option value="LoudnessOnly" data-an-i18n="opt.engine.LoudnessOnly">Level the loudness only, leave the dynamics alone</option>
                         </select>
-                        <div class="fieldDescription">
-                            Звичайний компресор лише прибирає гучне, але не робить діалоги чутнішими.
-                            dynaudnorm піднімає тихі місця — саме він розв'язує проблему.
+                        <div class="fieldDescription" data-an-i18n="desc.engine">
+                            A plain compressor only removes the loud parts, it never makes dialogue
+                            more audible. dynaudnorm lifts the quiet passages, which is what actually solves this.
                         </div>
                     </div>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anAutoStrength" />
-                        <span>Підбирати силу автоматично під кожен фільм</span>
+                        <span data-an-i18n="chk.autoStrength">Pick the strength automatically for each film</span>
                     </label>
 
                     <div class="inputContainer" id="anStrengthRow">
-                        <label class="inputLabel inputLabelUnfocused" for="anStrength">Сила, 0–100</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anStrength" data-an-i18n="lbl.strength">Strength, 0-100</label>
                         <input is="emby-input" type="number" id="anStrength" step="5" min="0" max="100" />
                     </div>
                 </div>
 
                 <div class="verticalSection">
-                    <h3 class="sectionTitle">Канали</h3>
+                    <h3 class="sectionTitle" data-an-i18n="sec.channels">Channels</h3>
 
                     <div class="selectContainer">
-                        <label class="selectLabel" for="anDownmix">Розкладка</label>
+                        <label class="selectLabel" for="anDownmix" data-an-i18n="lbl.downmix">Channel layout</label>
                         <select is="emby-select" id="anDownmix">
-                            <option value="0">Стерео з акцентом на діалог (рекомендовано)</option>
-                            <option value="1">Звичайне стерео</option>
-                            <option value="2">Лишити як в оригіналі (5.1/7.1)</option>
+                            <option value="DialogueStereo" data-an-i18n="opt.downmix.DialogueStereo">Dialogue-forward stereo (recommended)</option>
+                            <option value="PlainStereo" data-an-i18n="opt.downmix.PlainStereo">Plain stereo</option>
+                            <option value="KeepLayout" data-an-i18n="opt.downmix.KeepLayout">Keep the original layout (5.1/7.1)</option>
                         </select>
-                        <div class="fieldDescription">
-                            Звичайне зведення 5.1 → стерео робить діалоги <em>тихішими</em>: на тесті
-                            −37.5 LUFS перетворилось на −44.8. Тому діалогова матриця — не забаганка.
+                        <div class="fieldDescription" data-an-i18n-html="desc.downmix">
+                            A plain 5.1 to stereo downmix makes dialogue <em>quieter</em>: on the test
+                            material −37.5 LUFS turned into −44.8. The dialogue matrix is not a luxury.
                         </div>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anCenter">Центральний канал (діалоги), дБ</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anCenter" data-an-i18n="lbl.center">Centre channel (dialogue), dB</label>
                         <input is="emby-input" type="number" id="anCenter" step="0.5" min="-6" max="12" />
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anSurround">Тилові канали, дБ</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anSurround" data-an-i18n="lbl.surround">Surround channels, dB</label>
                         <input is="emby-input" type="number" id="anSurround" step="0.5" min="-20" max="6" />
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anLfe">Сабвуфер LFE, дБ</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anLfe" data-an-i18n="lbl.lfe">LFE subwoofer, dB</label>
                         <input is="emby-input" type="number" id="anLfe" step="1" min="-60" max="6" />
-                        <div class="fieldDescription">
-                            −60 вимикає LFE повністю. Саме там сидить більшість «бух» у бойовиках.
+                        <div class="fieldDescription" data-an-i18n="desc.lfe">
+                            −60 mutes LFE entirely. That is where most of the action-film boom lives.
                         </div>
                     </div>
                 </div>
 
                 <div class="verticalSection">
-                    <h3 class="sectionTitle">Файл доріжки</h3>
+                    <h3 class="sectionTitle" data-an-i18n="sec.trackFile">Track file</h3>
 
                     <div class="selectContainer">
-                        <label class="selectLabel" for="anCodec">Кодек</label>
+                        <label class="selectLabel" for="anCodec" data-an-i18n="lbl.codec">Codec</label>
                         <select is="emby-select" id="anCodec">
-                            <option value="0">AAC — грає всюди, включно з браузером (затримка 21 мс, компенсується)</option>
-                            <option value="1">E-AC3 — точна довжина, чудово для ТБ, браузер не тягне</option>
-                            <option value="2">AC3 — те саме, сумісніший зі старими ресиверами</option>
-                            <option value="3">FLAC — без втрат, нульова затримка, файл у 3–5 разів більший</option>
-                            <option value="4">Opus — найменший розмір, слабша підтримка на старих ТБ</option>
+                            <option value="Aac" data-an-i18n="opt.codec.Aac">AAC - plays everywhere including the browser (21 ms delay, compensated)</option>
+                            <option value="Eac3" data-an-i18n="opt.codec.Eac3">E-AC3 - exact length, great on TVs, browsers cannot decode it</option>
+                            <option value="Ac3" data-an-i18n="opt.codec.Ac3">AC3 - the same, friendlier to older receivers</option>
+                            <option value="Flac" data-an-i18n="opt.codec.Flac">FLAC - lossless, zero delay, 3-5 times the file size</option>
+                            <option value="Opus" data-an-i18n="opt.codec.Opus">Opus - the smallest, weaker support on older TVs</option>
                         </select>
                     </div>
 
                     <div class="selectContainer">
-                        <label class="selectLabel" for="anContainer">Контейнер</label>
+                        <label class="selectLabel" for="anContainer" data-an-i18n="lbl.container">Container</label>
                         <select is="emby-select" id="anContainer">
-                            <option value="0">.mka — зберігає мову і назву доріжки (рекомендовано)</option>
-                            <option value="1">.m4a — зберігає мову, назву втрачає</option>
-                            <option value="2">Сирий потік — жодних тегів, лише ім'я файлу</option>
+                            <option value="Mka" data-an-i18n="opt.container.Mka">.mka - keeps the language and the track title (recommended)</option>
+                            <option value="M4a" data-an-i18n="opt.container.M4a">.m4a - keeps the language, loses the title</option>
+                            <option value="Raw" data-an-i18n="opt.container.Raw">Raw stream - no tags at all, only the file name</option>
                         </select>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anBitrate">Бітрейт, кбіт/с</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anBitrate" data-an-i18n="lbl.bitrate">Bitrate, kbps</label>
                         <input is="emby-input" type="number" id="anBitrate" step="32" min="64" max="768" />
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anPrefix">Префікс назви доріжки</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anPrefix" data-an-i18n="lbl.prefix">Track title prefix</label>
                         <input is="emby-input" type="text" id="anPrefix" placeholder="AN" />
-                        <div class="fieldDescription">
-                            Ставиться перед назвою: <code>AN - Ukrainian 5.1</code>. Так нормалізовані
-                            доріжки одразу видно в списку звуку плеєра.
+                        <div class="fieldDescription" data-an-i18n-html="desc.prefix">
+                            Placed in front of the name: <code>AN - Ukrainian 5.1</code>. That is how
+                            normalized tracks stand out in the player audio list.
                         </div>
                     </div>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anAppendSource" />
-                        <span>Додавати назву вихідної доріжки після префікса</span>
+                        <span data-an-i18n="chk.appendSource">Append the source track name after the prefix</span>
                     </label>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anTitle">Запасна назва</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anTitle" data-an-i18n="lbl.fallbackTitle">Fallback title</label>
                         <input is="emby-input" type="text" id="anTitle" />
-                        <div class="fieldDescription">
-                            Використовується, коли з вихідної доріжки нічого взяти. Не вживайте слова
-                            default, forced, foreign, cc, hi, sdh — Jellyfin прочитає їх як службові
-                            прапорці, а не як назву.
+                        <div class="fieldDescription" data-an-i18n="desc.fallbackTitle">
+                            Used when there is nothing to take from the source track. Avoid the words
+                            default, forced, foreign, cc, hi, sdh - Jellyfin reads them as flags, not as a name.
                         </div>
                     </div>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anMakeDefault" />
-                        <span>Зробити нормалізовану доріжку типовою</span>
+                        <span data-an-i18n="chk.makeDefault">Make the normalized track the default one</span>
                     </label>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anDelay">Ручна затримка, мс</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anDelay" data-an-i18n="lbl.delay">Manual delay, ms</label>
                         <input is="emby-input" type="number" id="anDelay" step="5" min="-500" max="500" />
-                        <div class="fieldDescription">
-                            Лишіть 0. Потрібно лише якщо конкретний клієнт не враховує затримку кодека
-                            і звук помітно розходиться з відео.
+                        <div class="fieldDescription" data-an-i18n="desc.delay">
+                            Leave at 0. Only needed when a particular client ignores the codec delay and
+                            the sound visibly drifts from the picture.
                         </div>
                     </div>
                 </div>
 
                 <div class="verticalSection">
-                    <h3 class="sectionTitle">Робота у фоні</h3>
+                    <h3 class="sectionTitle" data-an-i18n="sec.background">Background work</h3>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anParallel">Паралельних завдань</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anParallel" data-an-i18n="lbl.parallel">Parallel jobs</label>
                         <input is="emby-input" type="number" id="anParallel" step="1" min="1" max="8" />
                     </div>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anPause" />
-                        <span>Ставити на паузу, поки хтось дивиться</span>
+                        <span data-an-i18n="chk.pause">Pause while somebody is watching</span>
                     </label>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anDryRun" />
-                        <span>Тестовий прогін: нічого не записувати, лише показати що буде зроблено</span>
+                        <span data-an-i18n="chk.dryRun">Dry run: write nothing, only report what would be done</span>
                     </label>
 
                     <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anLogCommands" />
-                        <span>Писати повну команду ffmpeg у лог сервера</span>
+                        <span data-an-i18n="chk.logCommands">Write the full ffmpeg command to the server log</span>
                     </label>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anMinFree">Лишати вільного місця, ГБ</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anMinFree" data-an-i18n="lbl.minFree">Keep free disk space, GB</label>
                         <input is="emby-input" type="number" id="anMinFree" step="1" min="0" max="500" />
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anMinDuration">Пропускати коротше за, хв</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anMinDuration" data-an-i18n="lbl.minDuration">Skip anything shorter than, min</label>
                         <input is="emby-input" type="number" id="anMinDuration" step="1" min="0" max="240" />
                     </div>
 
                     <div class="selectContainer">
-                        <label class="selectLabel" for="anSourceSel">Яку доріжку брати за основу</label>
+                        <label class="selectLabel" for="anSourceSel" data-an-i18n="lbl.sourceSel">Which track to use as the source</label>
                         <select is="emby-select" id="anSourceSel">
-                            <option value="1">З найбільшою кількістю каналів</option>
-                            <option value="0">Типову</option>
-                            <option value="2">За бажаною мовою</option>
+                            <option value="MostChannels" data-an-i18n="opt.src.MostChannels">The one with the most channels</option>
+                            <option value="DefaultTrack" data-an-i18n="opt.src.DefaultTrack">The default one</option>
+                            <option value="PreferredLanguage" data-an-i18n="opt.src.PreferredLanguage">By preferred language</option>
                         </select>
                     </div>
 
                     <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="anLangs">Бажані мови, через кому</label>
+                        <label class="inputLabel inputLabelUnfocused" for="anLangs" data-an-i18n="lbl.langs">Preferred languages, comma separated</label>
                         <input is="emby-input" type="text" id="anLangs" placeholder="ukr, eng" />
                     </div>
                 </div>
 
                 <div>
                     <button is="emby-button" type="submit" class="raised button-submit block">
-                        <span>Зберегти</span>
+                        <span data-an-i18n="btn.save">Save</span>
                     </button>
                 </div>
             </form>
 
             <div class="verticalSection">
-                <h3 class="sectionTitle">Черга</h3>
+                <h3 class="sectionTitle" data-an-i18n="sec.queue">Queue</h3>
                 <div id="anQueue" class="fieldDescription">—</div>
                 <div style="margin-top:0.6em;">
                     <button is="emby-button" type="button" id="anBtnAnalyzeAll" class="raised">
-                        <span>Виміряти всю бібліотеку</span>
+                        <span data-an-i18n="btn.analyzeAll">Measure the whole library</span>
                     </button>
                     <button is="emby-button" type="button" id="anBtnGenerateAll" class="raised">
-                        <span>Створити доріжки там, де треба</span>
+                        <span data-an-i18n="btn.generateAll">Build tracks where needed</span>
                     </button>
                     <button is="emby-button" type="button" id="anBtnCancel" class="raised">
-                        <span>Очистити чергу</span>
+                        <span data-an-i18n="btn.cancelQueue">Empty the queue</span>
                     </button>
                 </div>
             </div>
 
             <div class="verticalSection">
-                <h3 class="sectionTitle">Звіт по медіа</h3>
+                <h3 class="sectionTitle" data-an-i18n="sec.report">Media report</h3>
                 <div id="anSummary" class="fieldDescription" style="margin-bottom:0.8em;"></div>
                 <label class="checkboxContainer">
                     <input is="emby-checkbox" type="checkbox" id="anOnlyProblems" />
-                    <span>Лише ті, де різниця перевищує ціль</span>
+                    <span data-an-i18n="chk.onlyProblems">Only those whose range exceeds the target</span>
                 </label>
-                <div class="fieldDescription" style="margin-bottom:0.4em;">
-                    Клацніть на <b>назву фільму</b>, щоб розгорнути список його аудіодоріжок і галочками
-                    обрати, які саме нормалізувати. Клацніть на заголовок колонки, щоб відсортувати.
-                    «Тихе» і «Гучне» — це межі, між якими гуляє гучність; «Різниця» між ними і є тим,
-                    що ріже вуха.
+                <div class="fieldDescription" style="margin-bottom:0.4em;" data-an-i18n-html="desc.report">
+                    Click a <b>film name</b> to expand its audio tracks and tick the ones to normalize.
+                    Click a column heading to sort. "Quiet" and "Loud" are the bounds the loudness moves
+                    between; the "Range" between them is what hurts the ears.
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="tblLibraryReport detailTable" style="width:100%;border-collapse:collapse;">
                         <thead>
                         <tr id="anReportHead">
-                            <th style="text-align:left;cursor:pointer;" data-sort="Name">Назва</th>
-                            <th style="text-align:right;cursor:pointer;" data-sort="Minutes">Хв</th>
+                            <th style="text-align:left;cursor:pointer;" data-sort="Name" data-an-i18n="th.name">Name</th>
+                            <th style="text-align:right;cursor:pointer;" data-sort="Minutes" data-an-i18n="th.minutes">Min</th>
                             <th style="text-align:center;cursor:pointer;" data-sort="SelectedCount"
-                                title="Скільки доріжок обрано для нормалізації">Дор.</th>
-                            <th style="text-align:left;">Джерело</th>
+                                data-an-i18n="th.tracks" data-an-i18n-title="th.tracks.tip"
+                                title="How many tracks are selected for normalizing">Trk</th>
+                            <th style="text-align:left;" data-an-i18n="th.source">Source</th>
                             <th style="text-align:right;cursor:pointer;" data-sort="SourceLufs"
-                                title="Середня гучність оригіналу">LUFS</th>
+                                data-an-i18n="th.lufs" data-an-i18n-title="th.lufs.tip"
+                                title="Average loudness of the original">LUFS</th>
                             <th style="text-align:right;cursor:pointer;" data-sort="SourceRangeLu"
-                                title="Різниця між тихим і гучним в оригіналі">Різниця</th>
+                                data-an-i18n="th.range" data-an-i18n-title="th.range.tip"
+                                title="Difference between quiet and loud in the original">Range</th>
                             <th style="text-align:right;cursor:pointer;" data-sort="SourceLowLufs"
-                                title="Нижня межа гучності: приблизно рівень тихих діалогів">Тихе</th>
+                                data-an-i18n="th.quiet" data-an-i18n-title="th.quiet.tip"
+                                title="Lower loudness bound: roughly the level of quiet dialogue">Quiet</th>
                             <th style="text-align:right;cursor:pointer;" data-sort="SourceHighLufs"
-                                title="Верхня межа гучності: приблизно рівень гучних сцен">Гучне</th>
+                                data-an-i18n="th.loud" data-an-i18n-title="th.loud.tip"
+                                title="Upper loudness bound: roughly the level of the loud scenes">Loud</th>
                             <th style="text-align:right;cursor:pointer;" data-sort="SourcePeakDb"
-                                title="Піковий рівень оригіналу">Пік</th>
+                                data-an-i18n="th.peak" data-an-i18n-title="th.peak.tip"
+                                title="Peak level of the original">Peak</th>
                             <th style="text-align:right;cursor:pointer;" data-sort="ResultRangeLu"
-                                title="Різниця після обробки">Стало</th>
-                            <th style="text-align:left;cursor:pointer;" data-sort="State">Стан</th>
-                            <th style="text-align:right;cursor:pointer;" data-sort="OutputMb">МБ</th>
+                                data-an-i18n="th.after" data-an-i18n-title="th.after.tip"
+                                title="The range once processed">After</th>
+                            <th style="text-align:left;cursor:pointer;" data-sort="State" data-an-i18n="th.state">State</th>
+                            <th style="text-align:right;cursor:pointer;" data-sort="OutputMb" data-an-i18n="th.mb">MB</th>
                             <th></th>
                         </tr>
                         </thead>
@@ -321,32 +341,36 @@
             </div>
 
             <div class="verticalSection" id="anOverrideSection" style="display:none;">
-                <h3 class="sectionTitle">Окремі налаштування: <span id="anOverrideName"></span></h3>
-                <div class="fieldDescription" style="margin-bottom:0.8em;">
-                    Ці значення діють тільки для цього фільму й перекривають глобальні.
+                <h3 class="sectionTitle">
+                    <span data-an-i18n="sec.override">Settings for this film only:</span>
+                    <span id="anOverrideName"></span>
+                </h3>
+                <div class="fieldDescription" style="margin-bottom:0.8em;" data-an-i18n="desc.override">
+                    These values apply to this film alone and override the global ones.
                 </div>
                 <div id="anOverrideFields"></div>
                 <div style="margin-top:0.8em;">
                     <button is="emby-button" type="button" id="anOverrideSave" class="raised button-submit">
-                        <span>Зберегти для цього фільму</span>
+                        <span data-an-i18n="btn.overrideSave">Save for this film</span>
                     </button>
                     <button is="emby-button" type="button" id="anOverrideReset" class="raised">
-                        <span>Повернути до глобальних</span>
+                        <span data-an-i18n="btn.overrideReset">Back to the global settings</span>
                     </button>
                     <button is="emby-button" type="button" id="anOverrideClose" class="raised">
-                        <span>Закрити</span>
+                        <span data-an-i18n="btn.overrideClose">Close</span>
                     </button>
                 </div>
             </div>
 
             <div class="verticalSection" id="anSelfTestSection" style="display:none;">
-                <h3 class="sectionTitle">Самодіагностика</h3>
+                <h3 class="sectionTitle" data-an-i18n="sec.selfTest">Self-test</h3>
                 <pre id="anSelfTestOut" style="white-space:pre-wrap;word-break:break-all;font-size:.85em;
                      background:rgba(128,128,128,.12);padding:0.8em;border-radius:4px;max-height:28em;overflow:auto;"></pre>
             </div>
 
         </div>
     </div>
+    <script src="configurationpage?name=audionormalizerstrings"></script>
     <script src="configurationpage?name=audionormalizerjs"></script>
 </div>
 </body>

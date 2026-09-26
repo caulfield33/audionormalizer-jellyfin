@@ -5,6 +5,67 @@
     var PLUGIN_ID = '2a968ad7-6168-44c8-b149-cf94eb870b25';
     var statusTimer = null;
 
+    // ---------------------------------------------------------------- language
+
+    var DICT = window.AudioNormalizerStrings || { en: {} };
+    var LANG_KEY = 'audionormalizer.language';
+
+    function detectLanguage() {
+        // An explicit choice always wins. localStorage throws in some private-browsing modes,
+        // so every access is guarded and the page simply falls back to detection.
+        try {
+            var saved = window.localStorage.getItem(LANG_KEY);
+            if (saved && DICT[saved]) { return saved; }
+        } catch (e) { /* storage unavailable */ }
+
+        var candidates = [];
+        if (window.Globalize && typeof window.Globalize.getCurrentLocale === 'function') {
+            candidates.push(window.Globalize.getCurrentLocale());
+        }
+        candidates.push(document.documentElement.getAttribute('lang'));
+        candidates.push(navigator.language);
+
+        for (var i = 0; i < candidates.length; i++) {
+            var c = candidates[i];
+            if (!c) { continue; }
+            var short = String(c).toLowerCase().split(/[-_]/)[0];
+            if (DICT[short]) { return short; }
+        }
+        return 'en';
+    }
+
+    var lang = detectLanguage();
+
+    /** Looks a string up in the active language, substituting {name} placeholders. */
+    function t(key, vars) {
+        var table = DICT[lang] || DICT.en || {};
+        var s = table[key];
+        if (s === undefined && DICT.en) { s = DICT.en[key]; }
+        if (s === undefined) { return key; }
+        if (vars) {
+            Object.keys(vars).forEach(function (k) {
+                s = s.split('{' + k + '}').join(vars[k]);
+            });
+        }
+        return s;
+    }
+
+    /** Fills in every element in configPage.html that carries a data-an-i18n* attribute. */
+    function applyStaticText(root) {
+        root.querySelectorAll('[data-an-i18n]').forEach(function (el) {
+            el.textContent = t(el.getAttribute('data-an-i18n'));
+        });
+        root.querySelectorAll('[data-an-i18n-html]').forEach(function (el) {
+            // Only ever our own dictionary strings, which is why innerHTML is safe here.
+            el.innerHTML = t(el.getAttribute('data-an-i18n-html'));
+        });
+        root.querySelectorAll('[data-an-i18n-title]').forEach(function (el) {
+            el.title = t(el.getAttribute('data-an-i18n-title'));
+        });
+    }
+
+    // ---------------------------------------------------------------- helpers
+
     function api(method, path, body) {
         var options = {
             type: method,
@@ -28,18 +89,18 @@
     }
 
     function stateLabel(state) {
-        switch (state) {
-            case 'Analyzed': return 'виміряно';
-            case 'Queued': return 'у черзі';
-            case 'Running': return 'обробляється';
-            case 'Done': return 'готово';
-            case 'Skipped': return 'пропущено';
-            case 'Failed': return 'помилка';
-            case 'Stale': return 'застаріло';
-            default: return 'невідомо';
-        }
+        var key = 'state.' + state;
+        var text = t(key);
+        return text === key ? t('state.Unknown') : text;
     }
 
+    // ---------------------------------------------------------------- settings
+
+    // Enum values travel as their NAMES, never as numbers. Jellyfin's JsonDefaults installs a
+    // JsonStringEnumConverter, so this endpoint answers with "Dynaudnorm", not 0 - and the
+    // option values in configPage.html are the enum names to match. With numbers the select
+    // matched nothing after a reload: it silently showed no selection, and saving it back sent
+    // NaN. Do not "tidy" these into integers.
     function loadConfig(page) {
         ApiClient.getPluginConfiguration(PLUGIN_ID).then(function (config) {
             var p = config.GlobalProfile || {};
@@ -88,15 +149,15 @@
             p.MaxTruePeakDb = parseFloat(page.querySelector('#anMaxPeak').value);
             p.TargetDynamicRangeLu = parseFloat(page.querySelector('#anTargetLra').value);
             p.SkipIfDynamicRangeBelowLu = parseFloat(page.querySelector('#anSkipBelow').value);
-            p.Engine = parseInt(page.querySelector('#anEngine').value, 10);
+            p.Engine = page.querySelector('#anEngine').value;
             p.AutoStrength = page.querySelector('#anAutoStrength').checked;
             p.Strength = parseInt(page.querySelector('#anStrength').value, 10);
-            p.Downmix = parseInt(page.querySelector('#anDownmix').value, 10);
+            p.Downmix = page.querySelector('#anDownmix').value;
             p.CenterBoostDb = parseFloat(page.querySelector('#anCenter').value);
             p.SurroundGainDb = parseFloat(page.querySelector('#anSurround').value);
             p.LfeGainDb = parseFloat(page.querySelector('#anLfe').value);
-            p.Codec = parseInt(page.querySelector('#anCodec').value, 10);
-            p.Container = parseInt(page.querySelector('#anContainer').value, 10);
+            p.Codec = page.querySelector('#anCodec').value;
+            p.Container = page.querySelector('#anContainer').value;
             p.BitrateKbps = parseInt(page.querySelector('#anBitrate').value, 10);
             p.TrackTitlePrefix = page.querySelector('#anPrefix').value;
             p.AppendSourceNameToTitle = page.querySelector('#anAppendSource').checked;
@@ -111,7 +172,7 @@
             config.LogFfmpegCommands = page.querySelector('#anLogCommands').checked;
             config.MinimumFreeSpaceGb = parseFloat(page.querySelector('#anMinFree').value);
             config.MinimumDurationMinutes = parseInt(page.querySelector('#anMinDuration').value, 10);
-            config.SourceSelection = parseInt(page.querySelector('#anSourceSel').value, 10);
+            config.SourceSelection = page.querySelector('#anSourceSel').value;
             config.PreferredSourceLanguages = page.querySelector('#anLangs').value
                 .split(',')
                 .map(function (s) { return s.trim(); })
@@ -121,40 +182,49 @@
         }).then(function (result) {
             Dashboard.processPluginConfigurationUpdateResult(result);
             loadDiagnostics(page);
+        }, function (err) {
+            // Without this a rejected save was completely silent: the page looked as if it had
+            // saved, and the values were simply gone on the next load.
+            Dashboard.alert(t('msg.saveFailed'));
+            console.error('Audio Normalizer: saving the configuration failed', err);
         });
     }
 
     function loadDiagnostics(page) {
         api('GET', 'Diagnostics').then(function (d) {
             var html = '';
-            html += '<div>ffmpeg: <code>' + (d.FfmpegPath || 'невідомо') + '</code></div>';
+            html += '<div>ffmpeg: <code>' + (d.FfmpegPath || t('diag.unknownPath')) + '</code></div>';
 
             var missing = [];
             Object.keys(d.Filters || {}).forEach(function (f) {
                 if (!d.Filters[f]) { missing.push(f); }
             });
             if (missing.length) {
-                html += '<div style="color:#c33;">Немає фільтрів: ' + missing.join(', ') + '</div>';
+                html += '<div style="color:#c33;">' + t('diag.missingFilters', { list: missing.join(', ') }) + '</div>';
             } else {
-                html += '<div>Усі потрібні фільтри на місці.</div>';
+                html += '<div>' + t('diag.allFiltersPresent') + '</div>';
             }
 
-            html += '<div>Придатних до обробки одиниць медіа: ' + d.CandidateCount + '</div>';
+            html += '<div>' + t('diag.candidates', { n: d.CandidateCount }) + '</div>';
             (d.Warnings || []).forEach(function (w) {
                 html += '<div style="color:#c93;">⚠ ' + w + '</div>';
             });
             page.querySelector('#anDiagBody').innerHTML = html;
         }, function () {
-            page.querySelector('#anDiagBody').textContent = 'Не вдалось отримати стан.';
+            page.querySelector('#anDiagBody').textContent = t('diag.failed');
         });
     }
 
     function loadStatus(page) {
         api('GET', 'Status').then(function (s) {
-            var text = 'У черзі: ' + s.Pending + ' · виконується: ' + s.Running.length +
-                ' · завершено: ' + s.Completed + ' · помилок: ' + s.Failed;
+            var text = t('queue.line', {
+                pending: s.Pending,
+                running: s.Running.length,
+                done: s.Completed,
+                failed: s.Failed
+            });
             if (s.PausedForPlayback) {
-                text += ' · призупинено, бо йде відтворення';
+                text += t('queue.pausedPlayback');
             }
             if (s.Running.length) {
                 text += '<br/>' + s.Running.map(function (j) {
@@ -167,6 +237,8 @@
             page.querySelector('#anQueue').innerHTML = text;
         });
     }
+
+    // ---------------------------------------------------------------- report
 
     var reportRows = [];
     var expanded = {};
@@ -213,17 +285,28 @@
                      [Math.floor(measured.length / 2)].SourceRangeLu;
 
         var html = '';
-        html += '<div>Виміряно: <b>' + measured.length + '</b>' +
-                ' · потребують обробки (різниця більша за ' + num(target) + ' LU): <b>' + worth.length + '</b>' +
-                ' · уже готово: <b>' + done.length + '</b></div>';
-        html += '<div>Медіанна різниця по бібліотеці: <b>' + num(median) + ' LU</b>' +
-                ' · найгірший: ' + worstList[0].Name + ' (' + num(worstList[0].SourceRangeLu) + ' LU)</div>';
+        html += '<div>' + t('summary.measured', {
+            measured: measured.length,
+            target: num(target),
+            worth: worth.length,
+            done: done.length
+        }) + '</div>';
+        html += '<div>' + t('summary.median', {
+            median: num(median),
+            worstName: worstList[0].Name,
+            worstRange: num(worstList[0].SourceRangeLu)
+        }) + '</div>';
         if (pending.length) {
-            html += '<div>Лишилось обробити ' + pending.length + ' — це приблизно <b>' +
-                    (hours < 1 ? num(hours * 60, 0) + ' хв' : num(hours) + ' год') +
-                    '</b> роботи і <b>' + num(gb) + ' ГБ</b> на диску.</div>';
+            var time = hours < 1
+                ? t('unit.minutes', { n: num(hours * 60, 0) })
+                : t('unit.hours', { n: num(hours) });
+            html += '<div>' + t('summary.remaining', {
+                n: pending.length,
+                time: time,
+                gb: num(gb)
+            }) + '</div>';
         } else {
-            html += '<div>Немає нічого, що потребувало б обробки за поточними налаштуваннями.</div>';
+            html += '<div>' + t('summary.nothing') + '</div>';
         }
         el.innerHTML = html;
     }
@@ -235,13 +318,13 @@
             td.colSpan = 13;
             td.style.padding = '4px 6px 10px 28px';
             td.style.opacity = '.7';
-            td.textContent = 'Аудіодоріжки ще не проскановано. Запустіть «Виміряти всю бібліотеку».';
+            td.textContent = t('track.notScanned');
             none.appendChild(td);
             body.appendChild(none);
             return;
         }
 
-        r.Tracks.forEach(function (t) {
+        r.Tracks.forEach(function (track) {
             var tr = document.createElement('tr');
             tr.style.background = 'rgba(128,128,128,.07)';
 
@@ -262,30 +345,30 @@
 
             var cb = document.createElement('input');
             cb.type = 'checkbox';
-            cb.checked = !!t.Selected;
+            cb.checked = !!track.Selected;
             cb.style.marginRight = '8px';
-            cb.title = 'Нормалізувати цю доріжку';
+            cb.title = t('track.normalizeThis');
             cb.addEventListener('change', function () {
                 var indexes = r.Tracks
-                    .filter(function (x) { return x.StreamIndex === t.StreamIndex ? cb.checked : x.Selected; })
+                    .filter(function (x) { return x.StreamIndex === track.StreamIndex ? cb.checked : x.Selected; })
                     .map(function (x) { return x.StreamIndex; });
                 saveTrackSelection(page, r.ItemId, indexes, false);
             });
             first.appendChild(cb);
 
             var label = document.createElement('span');
-            label.textContent = t.Label || ('stream ' + t.StreamIndex);
+            label.textContent = track.Label || ('stream ' + track.StreamIndex);
             first.appendChild(label);
 
-            if (t.IsDefault) {
+            if (track.IsDefault) {
                 var d = document.createElement('span');
                 d.textContent = ' default';
                 d.style.opacity = '.55';
                 first.appendChild(d);
             }
-            if (t.IsCommentary) {
+            if (track.IsCommentary) {
                 var c = document.createElement('span');
-                c.textContent = ' коментар';
+                c.textContent = t('track.commentary');
                 c.style.opacity = '.55';
                 first.appendChild(c);
             }
@@ -293,34 +376,34 @@
 
             tr.appendChild(cell('', 'right'));
             tr.appendChild(cell('', 'center'));
-            tr.appendChild(cell(t.Selected ? t.PlannedTitle : '—'));
-            tr.appendChild(cell(num(t.SourceLufs), 'right'));
+            tr.appendChild(cell(track.Selected ? track.PlannedTitle : '—'));
+            tr.appendChild(cell(num(track.SourceLufs), 'right'));
 
-            var rangeCell = cell(num(t.SourceRangeLu), 'right');
-            if (t.SourceRangeLu !== null && t.SourceRangeLu >= 18) {
+            var rangeCell = cell(num(track.SourceRangeLu), 'right');
+            if (track.SourceRangeLu !== null && track.SourceRangeLu >= 18) {
                 rangeCell.style.color = '#e06c3b';
             }
             tr.appendChild(rangeCell);
 
-            tr.appendChild(cell(num(t.SourceLowLufs), 'right'));
-            tr.appendChild(cell(num(t.SourceHighLufs), 'right'));
-            tr.appendChild(cell(num(t.SourcePeakDb), 'right'));
-            tr.appendChild(cell(t.ResultRangeLu === null ? '—' : num(t.ResultRangeLu), 'right'));
-            tr.appendChild(cell(t.Selected ? stateLabel(t.State) : '—'));
-            tr.appendChild(cell(t.OutputMb ? num(t.OutputMb) : '—', 'right'));
+            tr.appendChild(cell(num(track.SourceLowLufs), 'right'));
+            tr.appendChild(cell(num(track.SourceHighLufs), 'right'));
+            tr.appendChild(cell(num(track.SourcePeakDb), 'right'));
+            tr.appendChild(cell(track.ResultRangeLu === null ? '—' : num(track.ResultRangeLu), 'right'));
+            tr.appendChild(cell(track.Selected ? stateLabel(track.State) : '—'));
+            tr.appendChild(cell(track.OutputMb ? num(track.OutputMb) : '—', 'right'));
 
             var actions = document.createElement('td');
             actions.style.textAlign = 'right';
             actions.style.whiteSpace = 'nowrap';
             actions.style.padding = '3px 6px';
 
-            if (t.OutputPath) {
+            if (track.OutputPath) {
                 var del = document.createElement('button');
                 del.className = 'raised';
                 del.style.marginLeft = '4px';
-                del.textContent = 'Видалити';
+                del.textContent = t('btn.delete');
                 del.addEventListener('click', function () {
-                    api('DELETE', 'Track/' + r.ItemId + '?streamIndex=' + t.StreamIndex)
+                    api('DELETE', 'Track/' + r.ItemId + '?streamIndex=' + track.StreamIndex)
                         .then(function () { loadReport(page); });
                 });
                 actions.appendChild(del);
@@ -328,7 +411,7 @@
 
             tr.appendChild(actions);
 
-            if (t.Note) { tr.title = t.Note; }
+            if (track.Note) { tr.title = track.Note; }
             body.appendChild(tr);
         });
 
@@ -340,18 +423,16 @@
         ftd.style.padding = '2px 6px 10px 28px';
         ftd.style.fontSize = '.85em';
 
-        var explicit = r.Tracks.some(function (t) { return t.SelectionIsExplicit; });
+        var explicit = r.Tracks.some(function (x) { return x.SelectionIsExplicit; });
         var note = document.createElement('span');
         note.style.opacity = '.7';
-        note.textContent = explicit
-            ? 'Доріжки обрано вручну. '
-            : 'Доріжку обрано автоматично за правилом із налаштувань. ';
+        note.textContent = explicit ? t('track.manualChoice') : t('track.autoChoice');
         ftd.appendChild(note);
 
         if (explicit) {
             var reset = document.createElement('a');
             reset.href = '#';
-            reset.textContent = 'Повернути автоматичний вибір';
+            reset.textContent = t('track.resetAuto');
             reset.addEventListener('click', function (e) {
                 e.preventDefault();
                 saveTrackSelection(page, r.ItemId, [], true);
@@ -382,8 +463,7 @@
             body.innerHTML = '';
 
             if (!rows.length) {
-                page.querySelector('#anReportEmpty').textContent =
-                    'Поки порожньо. Запустіть «Виміряти всю бібліотеку» — це нічого не змінює на диску.';
+                page.querySelector('#anReportEmpty').textContent = t('report.empty');
                 return;
             }
             page.querySelector('#anReportEmpty').textContent = '';
@@ -402,9 +482,9 @@
                     return td;
                 }
 
-                var nameCell = cell((expanded[r.ItemId] ? '\u25BE  ' : '\u25B8  ') + r.Name);
+                var nameCell = cell((expanded[r.ItemId] ? '▾  ' : '▸  ') + r.Name);
                 nameCell.style.cursor = 'pointer';
-                nameCell.title = 'Показати аудіодоріжки';
+                nameCell.title = t('report.showTracks');
                 nameCell.addEventListener('click', function () {
                     expanded[r.ItemId] = !expanded[r.ItemId];
                     loadReport(page);
@@ -417,7 +497,7 @@
                     r.SelectedCount + (r.Tracks.length ? ' / ' + r.Tracks.length : ''), 'center');
                 if (r.Tracks.length && r.SelectedCount === 0) {
                     countCell.style.opacity = '.5';
-                    countCell.title = 'Жодної доріжки не обрано — нічого не буде створено';
+                    countCell.title = t('report.noTracksSelected');
                 }
                 tr.appendChild(countCell);
 
@@ -428,7 +508,7 @@
                 if (r.SourceRangeLu !== null && r.SourceRangeLu >= 18) {
                     rangeCell.style.color = '#e06c3b';
                     rangeCell.style.fontWeight = '600';
-                    rangeCell.title = 'Велика різниця між тихим і гучним — цей фільм вартий обробки';
+                    rangeCell.title = t('report.rangeHigh');
                 }
                 tr.appendChild(rangeCell);
 
@@ -439,7 +519,7 @@
 
                 tr.appendChild(cell(num(r.SourcePeakDb), 'right'));
                 tr.appendChild(cell(r.ResultRangeLu === null ? '—' : num(r.ResultRangeLu), 'right'));
-                tr.appendChild(cell(stateLabel(r.State) + (r.Excluded ? ' (виключено)' : '')));
+                tr.appendChild(cell(stateLabel(r.State) + (r.Excluded ? t('report.excluded') : '')));
                 tr.appendChild(cell(r.OutputMb ? num(r.OutputMb) : '—', 'right'));
 
                 var actions = document.createElement('td');
@@ -449,7 +529,7 @@
                 var build = document.createElement('button');
                 build.className = 'raised';
                 build.style.marginLeft = '4px';
-                build.textContent = r.OutputPath ? 'Перебудувати' : 'Створити';
+                build.textContent = r.OutputPath ? t('btn.rebuild') : t('btn.build');
                 build.addEventListener('click', function () {
                     api('POST', 'Generate', { ItemIds: [r.ItemId], Force: true }).then(function () {
                         loadStatus(page);
@@ -461,9 +541,9 @@
                     var del = document.createElement('button');
                     del.className = 'raised';
                     del.style.marginLeft = '4px';
-                    del.textContent = 'Видалити';
+                    del.textContent = t('btn.delete');
                     del.addEventListener('click', function () {
-                        Dashboard.confirm('Видалити нормалізовану доріжку? Оригінал не постраждає.', 'Audio Normalizer', function (ok) {
+                        Dashboard.confirm(t('confirm.deleteTrack'), 'Audio Normalizer', function (ok) {
                             if (!ok) { return; }
                             api('DELETE', 'Track/' + r.ItemId).then(function () {
                                 loadReport(page);
@@ -476,8 +556,8 @@
                 var prof = document.createElement('button');
                 prof.className = 'raised';
                 prof.style.marginLeft = '4px';
-                prof.textContent = r.HasOverride ? 'Налаштування *' : 'Налаштування';
-                if (r.HasOverride) { prof.title = 'Цей фільм має власні налаштування'; }
+                prof.textContent = r.HasOverride ? t('btn.settingsStar') : t('btn.settings');
+                if (r.HasOverride) { prof.title = t('report.hasOverride'); }
                 prof.addEventListener('click', function () {
                     openOverride(page, r);
                 });
@@ -486,7 +566,7 @@
                 var diag = document.createElement('button');
                 diag.className = 'raised';
                 diag.style.marginLeft = '4px';
-                diag.textContent = 'Діагностика';
+                diag.textContent = t('btn.diagnostics');
                 diag.addEventListener('click', function () {
                     runSelfTest(page, r.ItemId);
                 });
@@ -495,7 +575,7 @@
                 var excl = document.createElement('button');
                 excl.className = 'raised';
                 excl.style.marginLeft = '4px';
-                excl.textContent = r.Excluded ? 'Повернути' : 'Виключити';
+                excl.textContent = r.Excluded ? t('btn.include') : t('btn.exclude');
                 excl.addEventListener('click', function () {
                     api('POST', 'Override', { ItemId: r.ItemId, Excluded: !r.Excluded }).then(function () {
                         loadReport(page);
@@ -518,26 +598,37 @@
         });
     }
 
-    // Per-item overrides. The fields mirror the global ones; anything not listed here
-    // simply inherits whatever the global profile has at generation time.
+    // ---------------------------------------------------------------- per-item overrides
+
+    // The fields mirror the global ones; anything not listed here simply inherits whatever the
+    // global profile has at generation time. Labels and option texts are dictionary KEYS,
+    // resolved when the editor is built, so switching language re-renders them correctly.
+    // Select values are enum NAMES, matching what the API returns - see loadConfig.
+    // literalOptions marks a select whose option texts are format names, identical in every
+    // language and therefore not translated.
     var OVERRIDE_FIELDS = [
-        { key: 'TargetLoudnessLufs',       label: 'Цільова гучність (LUFS)',        type: 'number', step: '0.5' },
-        { key: 'MaxTruePeakDb',            label: 'Максимальний пік (dBTP)',        type: 'number', step: '0.1' },
-        { key: 'TargetDynamicRangeLu',     label: 'Допустима різниця (LU)',         type: 'number', step: '0.5' },
-        { key: 'SkipIfDynamicRangeBelowLu',label: 'Не обробляти якщо менше (LU)',   type: 'number', step: '0.5' },
-        { key: 'Engine',                   label: 'Алгоритм',                       type: 'select',
-          options: [['0','dynaudnorm'],['1','speechnorm'],['2','Компресор'],['3','Лише гучність']] },
-        { key: 'AutoStrength',             label: 'Підбирати силу автоматично',     type: 'check' },
-        { key: 'Strength',                 label: 'Сила, 0–100',                    type: 'number', step: '5' },
-        { key: 'Downmix',                  label: 'Розкладка',                      type: 'select',
-          options: [['0','Стерео з акцентом на діалог'],['1','Звичайне стерео'],['2','Як в оригіналі']] },
-        { key: 'CenterBoostDb',            label: 'Центр (діалоги), дБ',            type: 'number', step: '0.5' },
-        { key: 'SurroundGainDb',           label: 'Тили, дБ',                       type: 'number', step: '0.5' },
-        { key: 'LfeGainDb',                label: 'Сабвуфер LFE, дБ',               type: 'number', step: '1' },
-        { key: 'Codec',                    label: 'Кодек',                          type: 'select',
-          options: [['0','AAC'],['1','E-AC3'],['2','AC3'],['3','FLAC'],['4','Opus']] },
-        { key: 'BitrateKbps',              label: 'Бітрейт, кбіт/с',                type: 'number', step: '32' },
-        { key: 'ManualDelayMs',            label: 'Ручна затримка, мс',             type: 'number', step: '5' }
+        { key: 'TargetLoudnessLufs',       labelKey: 'ov.targetLufs',   type: 'number', step: '0.5' },
+        { key: 'MaxTruePeakDb',            labelKey: 'ov.maxPeak',      type: 'number', step: '0.1' },
+        { key: 'TargetDynamicRangeLu',     labelKey: 'ov.targetLra',    type: 'number', step: '0.5' },
+        { key: 'SkipIfDynamicRangeBelowLu',labelKey: 'ov.skipBelow',    type: 'number', step: '0.5' },
+        { key: 'Engine',                   labelKey: 'ov.engine',       type: 'select',
+          options: [['Dynaudnorm', 'short.engine.Dynaudnorm'],
+                    ['SpeechNorm', 'short.engine.SpeechNorm'],
+                    ['Compressor', 'short.engine.Compressor'],
+                    ['LoudnessOnly', 'short.engine.LoudnessOnly']] },
+        { key: 'AutoStrength',             labelKey: 'ov.autoStrength', type: 'check' },
+        { key: 'Strength',                 labelKey: 'ov.strength',     type: 'number', step: '5' },
+        { key: 'Downmix',                  labelKey: 'ov.downmix',      type: 'select',
+          options: [['DialogueStereo', 'short.downmix.DialogueStereo'],
+                    ['PlainStereo', 'short.downmix.PlainStereo'],
+                    ['KeepLayout', 'short.downmix.KeepLayout']] },
+        { key: 'CenterBoostDb',            labelKey: 'ov.center',       type: 'number', step: '0.5' },
+        { key: 'SurroundGainDb',           labelKey: 'ov.surround',     type: 'number', step: '0.5' },
+        { key: 'LfeGainDb',                labelKey: 'ov.lfe',          type: 'number', step: '1' },
+        { key: 'Codec',                    labelKey: 'ov.codec',        type: 'select', literalOptions: true,
+          options: [['Aac', 'AAC'], ['Eac3', 'E-AC3'], ['Ac3', 'AC3'], ['Flac', 'FLAC'], ['Opus', 'Opus']] },
+        { key: 'BitrateKbps',              labelKey: 'ov.bitrate',      type: 'number', step: '32' },
+        { key: 'ManualDelayMs',            labelKey: 'ov.delay',        type: 'number', step: '5' }
     ];
 
     var overrideItemId = null;
@@ -550,7 +641,7 @@
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         var host = page.querySelector('#anOverrideFields');
-        host.innerHTML = 'Завантажую…';
+        host.textContent = t('ov.loading');
 
         api('GET', 'Override/' + row.ItemId).then(function (profile) {
             host.innerHTML = '';
@@ -566,13 +657,13 @@
                     cb.id = 'ov_' + f.key;
                     cb.checked = !!profile[f.key];
                     var sp = document.createElement('span');
-                    sp.textContent = f.label;
+                    sp.textContent = t(f.labelKey);
                     lab.appendChild(cb);
                     lab.appendChild(sp);
                     wrap.appendChild(lab);
                 } else {
                     var lbl = document.createElement('label');
-                    lbl.textContent = f.label;
+                    lbl.textContent = t(f.labelKey);
                     lbl.style.display = 'block';
                     lbl.style.fontSize = '.85em';
                     lbl.style.opacity = '.8';
@@ -585,7 +676,7 @@
                         f.options.forEach(function (o) {
                             var opt = document.createElement('option');
                             opt.value = o[0];
-                            opt.textContent = o[1];
+                            opt.textContent = f.literalOptions ? o[1] : t(o[1]);
                             input.appendChild(opt);
                         });
                         input.value = String(profile[f.key]);
@@ -603,7 +694,7 @@
                 host.appendChild(wrap);
             });
         }, function () {
-            host.textContent = 'Не вдалось завантажити налаштування.';
+            host.textContent = t('ov.loadFailed');
         });
     }
 
@@ -616,7 +707,7 @@
             if (f.type === 'check') {
                 profile[f.key] = el.checked;
             } else if (f.type === 'select') {
-                profile[f.key] = parseInt(el.value, 10);
+                profile[f.key] = el.value;
             } else {
                 profile[f.key] = parseFloat(el.value);
             }
@@ -625,8 +716,11 @@
         // differently named tracks across the library.
         api('POST', 'Override', { ItemId: overrideItemId, Excluded: false, Profile: profile })
             .then(function () {
-                Dashboard.alert('Збережено для цього фільму.');
+                Dashboard.alert(t('ov.saved'));
                 loadReport(page);
+            }, function (err) {
+                Dashboard.alert(t('ov.saveFailed'));
+                console.error('Audio Normalizer: saving the per-item override failed', err);
             });
     }
 
@@ -640,57 +734,80 @@
             });
     }
 
+    // ---------------------------------------------------------------- self-test
+
     function runSelfTest(page, itemId) {
         var section = page.querySelector('#anSelfTestSection');
         var out = page.querySelector('#anSelfTestOut');
         section.style.display = '';
-        out.textContent = 'Перевіряю…';
+        out.textContent = t('st.checking');
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        // Padded here rather than in the dictionary: label lengths differ per language, so the
+        // column has to be lined up at render time to stay readable.
+        function row(labelKey, value) {
+            var s = t(labelKey) + ':';
+            while (s.length < 20) { s += ' '; }
+            return s + value;
+        }
 
         api('GET', 'SelfTest/' + itemId + '?run=true').then(function (d) {
             var L = [];
-            L.push('Фільм:            ' + (d.ItemName || '—'));
-            L.push('Файл:             ' + (d.SourcePath || '—'));
-            if (d.Refusal) { L.push(''); L.push('ВІДМОВА: ' + d.Refusal); out.textContent = L.join('\n'); return; }
+            L.push(row('st.film', d.ItemName || '—'));
+            L.push(row('st.file', d.SourcePath || '—'));
+            if (d.Refusal) {
+                L.push('');
+                L.push(t('st.refusal', { reason: d.Refusal }));
+                out.textContent = L.join('\n');
+                return;
+            }
             L.push('');
-            L.push('Аудіодоріжки джерела:');
+            L.push(t('st.sourceTracks'));
             (d.AudioStreams || []).forEach(function (s) { L.push('  ' + s); });
-            L.push('Обрано:           ' + d.ChosenStream);
+            L.push(row('st.chosen', d.ChosenStream));
             L.push('');
-            L.push('Куди ляже файл:   ' + d.OutputPath);
-            L.push('Тека доступна:    ' + (d.FolderWritable ? 'так' : 'НІ'));
-            L.push('Вільно на диску:  ' + d.FreeSpaceGb + ' ГБ');
-            L.push('ffmpeg:           ' + d.FfmpegPath);
-            L.push('Сила (m):         ' + d.ResolvedMaxGain);
+            L.push(row('st.outputPath', d.OutputPath));
+            L.push(row('st.folderWritable', d.FolderWritable ? t('st.yes') : t('st.no')));
+            L.push(row('st.freeSpace', d.FreeSpaceGb + ' GB'));
+            L.push(row('st.ffmpeg', d.FfmpegPath));
+            L.push(row('st.strength', d.ResolvedMaxGain));
             if (d.Measured) {
                 L.push('');
-                L.push('Виміряно: ' + num(d.Measured.IntegratedLufs) + ' LUFS, різниця ' +
-                       num(d.Measured.LoudnessRangeLu) + ' LU, пік ' + num(d.Measured.TruePeakDb) + ' dBTP');
+                L.push(t('st.measured', {
+                    lufs: num(d.Measured.IntegratedLufs),
+                    range: num(d.Measured.LoudnessRangeLu),
+                    peak: num(d.Measured.TruePeakDb)
+                }));
             }
             if ((d.Problems || []).length) {
                 L.push('');
-                L.push('ПРОБЛЕМИ:');
+                L.push(t('st.problems'));
                 d.Problems.forEach(function (p) { L.push('  ! ' + p); });
             }
             L.push('');
-            L.push('--- команда аналізу (можна вставити в термінал) ---');
+            L.push(t('st.analysisCommand'));
             L.push(d.AnalysisCommand);
             L.push('');
-            L.push('--- команда кодування ---');
+            L.push(t('st.encodeCommand'));
             L.push(d.EncodeCommand);
             if (d.FfmpegOutput) {
                 L.push('');
-                L.push('--- вивід ffmpeg ---');
+                L.push(t('st.ffmpegOutput'));
                 L.push(d.FfmpegOutput);
             }
             out.textContent = L.join('\n');
         }, function (e) {
-            out.textContent = 'Запит не вдався: ' + (e && e.statusText ? e.statusText : e);
+            out.textContent = t('st.requestFailed', { error: (e && e.statusText ? e.statusText : e) });
         });
     }
 
+    // ---------------------------------------------------------------- wiring
+
     document.querySelector('#AudioNormalizerConfigPage').addEventListener('pageshow', function () {
         var page = this;
+        page.querySelector('#anLanguage').value = lang;
+        applyStaticText(page);
+
         loadConfig(page);
         loadDiagnostics(page);
         loadStatus(page);
@@ -707,23 +824,37 @@
         }
     });
 
+    document.querySelector('#anLanguage').addEventListener('change', function () {
+        lang = this.value;
+        try {
+            window.localStorage.setItem(LANG_KEY, lang);
+        } catch (e) { /* storage unavailable, the choice just will not be remembered */ }
+
+        var page = document.querySelector('#AudioNormalizerConfigPage');
+        applyStaticText(page);
+        // Everything else on the page is rendered from data, so it has to be rebuilt.
+        loadDiagnostics(page);
+        loadStatus(page);
+        loadReport(page);
+    });
+
     document.querySelector('#AudioNormalizerConfigPage').addEventListener('click', function (e) {
         var page = this;
         var id = e.target && e.target.closest ? (e.target.closest('button') || {}).id : null;
 
         if (id === 'anBtnAnalyzeAll') {
             api('POST', 'Analyze', { ItemIds: [] }).then(function (n) {
-                Dashboard.alert('Поставлено в чергу на вимірювання: ' + n);
+                Dashboard.alert(t('msg.queuedAnalyze', { n: n }));
                 loadStatus(page);
             });
         } else if (id === 'anBtnGenerateAll') {
             api('POST', 'Generate', { ItemIds: [], Force: false }).then(function (n) {
-                Dashboard.alert('Поставлено в чергу на створення: ' + n);
+                Dashboard.alert(t('msg.queuedGenerate', { n: n }));
                 loadStatus(page);
             });
         } else if (id === 'anBtnCancel') {
             api('POST', 'Cancel').then(function (n) {
-                Dashboard.alert('Знято з черги: ' + n);
+                Dashboard.alert(t('msg.dequeued', { n: n }));
                 loadStatus(page);
             });
         }

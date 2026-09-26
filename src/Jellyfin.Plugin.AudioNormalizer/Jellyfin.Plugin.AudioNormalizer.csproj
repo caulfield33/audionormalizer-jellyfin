@@ -69,6 +69,7 @@
     -->
     <EmbeddedResource Include="Configuration\configPage.html" />
     <EmbeddedResource Include="Configuration\configPage.js" />
+    <EmbeddedResource Include="Configuration\configStrings.js" />
   </ItemGroup>
 
   <!-- Normal build: the official Jellyfin packages. -->

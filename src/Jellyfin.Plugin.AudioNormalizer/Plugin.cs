@@ -58,5 +58,16 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
                 "{0}.Configuration.configPage.js",
                 prefix)
         };
+
+        // The translations, loaded by configPage.html before the page script. Separate from
+        // configPage.js so a new language is one file to edit and nothing else.
+        yield return new PluginPageInfo
+        {
+            Name = "audionormalizerstrings",
+            EmbeddedResourcePath = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}.Configuration.configStrings.js",
+                prefix)
+        };
     }
 }

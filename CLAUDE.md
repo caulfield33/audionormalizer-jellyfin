@@ -3,10 +3,9 @@
 Context for continuing this project. Claude Code reads this file automatically, so a new
 session starts with everything below and does not need the original conversation.
 
-Everything is written in English: code, comments and documentation. The one exception is
-the plugin's user-facing settings page (`configPage.html` / `configPage.js`), whose visible
-strings are Ukrainian because that is the author's language. Keep that split if you touch
-either side.
+Everything is written in English: code, comments and documentation. The settings page is
+translated at runtime - English lives in the markup, Ukrainian in `configStrings.js` - so any
+visible string you add there needs an entry in both language tables.
 
 ---
 
@@ -105,8 +104,9 @@ src/Jellyfin.Plugin.AudioNormalizer/
 ├── Configuration/
 │   ├── NormalizationProfile.cs    one settings profile + SignatureKey (rebuild fingerprint)
 │   ├── PluginConfiguration.cs     global profile, per-item overrides, operational settings
-│   ├── configPage.html            admin UI (Ukrainian)
-│   └── configPage.js              talks to the endpoints below
+│   ├── configPage.html            admin UI, English markup + data-an-i18n keys
+│   ├── configPage.js              talks to the endpoints below; holds t() and the language pick
+│   └── configStrings.js           en/uk translation tables, one file per language to edit
 ├── Models/TrackRecord.cs          per-item state; holds a List<AudioTrackInfo>, one entry
 │                                  per source audio stream, each with its own measurement,
 │                                  selection flag, output path and state
@@ -244,8 +244,10 @@ and read `I`, `LRA`, `True peak` from the summary.
 - No StyleCop; one type per file is preferred but not enforced.
 - Comments explain **why**, especially where a measurement drove the choice. Do not strip
   those — they are the reason the pipeline works.
-- Documentation, code, identifiers, log messages and XML docs: English. Only the config
-  page's visible strings are Ukrainian.
+- Documentation, code, identifiers, log messages and XML docs: English. The settings page is
+  bilingual: `configPage.html` carries real English text plus `data-an-i18n` keys, and
+  `configStrings.js` holds the `en` and `uk` tables. Add a string to both tables or it falls
+  back to English.
 - Two deliberate exceptions where Cyrillic is data rather than prose, and must stay:
   `PluginConfiguration.CommentaryKeywords` carries Ukrainian words ("описов",
   "тифлокоментар") so Ukrainian commentary tracks are detected, and the naming tests in
