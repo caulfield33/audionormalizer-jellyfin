@@ -43,6 +43,11 @@ public sealed class FfmpegRunner
     private readonly ILogger<FfmpegRunner> _logger;
     private readonly IMediaEncoder _mediaEncoder;
 
+    // Guards _filterProbe only; the probe itself runs outside the lock.
+    private readonly object _filterLock = new();
+
+    private Task<HashSet<string>?>? _filterProbe;
+
     /// <summary>Initializes a new instance of the <see cref="FfmpegRunner"/> class.</summary>
     /// <param name="logger">Logger.</param>
     /// <param name="mediaEncoder">The server's encoder, which knows where its own ffmpeg lives.</param>
@@ -55,22 +60,106 @@ public sealed class FfmpegRunner
     /// <summary>Gets the ffmpeg binary the server itself uses.</summary>
     public string EncoderPath => _mediaEncoder.EncoderPath;
 
-    /// <summary>Asks the server whether a filter is compiled into its ffmpeg.</summary>
+    /// <summary>Asks whether a filter is compiled into the server's ffmpeg.</summary>
     /// <param name="filter">Filter name.</param>
-    /// <returns>True when available.</returns>
-    public bool SupportsFilter(string filter)
+    /// <returns>True when available, and true as well when the probe could not answer.</returns>
+    /// <remarks>
+    /// Deliberately NOT IMediaEncoder.SupportsFilter. The server answers that one out of
+    /// EncoderValidator._requiredFilters, a whitelist of about forty hardware and scaling
+    /// filters (scale_cuda, tonemap_vaapi, libplacebo, zscale, alphasrc...) that it collects
+    /// to make transcoding decisions. Anything outside that list is reported missing on every
+    /// ffmpeg build there is - and that includes every audio filter this plugin uses, so the
+    /// diagnostics page claimed loudnorm, ebur128 and dynaudnorm were all absent from
+    /// jellyfin-ffmpeg. Verified in MediaBrowser.MediaEncoding/Encoder/EncoderValidator.cs on
+    /// both release-10.11.z and 12. So: read the list out of ffmpeg itself, once, and cache it.
+    /// </remarks>
+    public async Task<bool> SupportsFilterAsync(string filter)
     {
-        try
+        var filters = await GetFiltersAsync().ConfigureAwait(false);
+
+        // A probe that could not run must not turn into "nothing works". Assume present and
+        // let ffmpeg fail with its own clear message if the filter really is missing.
+        return filters is null || filters.Contains(filter);
+    }
+
+    private async Task<HashSet<string>?> GetFiltersAsync()
+    {
+        Task<HashSet<string>?> probe;
+        lock (_filterLock)
         {
-            return _mediaEncoder.SupportsFilter(filter);
+            probe = _filterProbe ??= ProbeFiltersAsync();
         }
-        catch (Exception ex)
+
+        var result = await probe.ConfigureAwait(false);
+        if (result is null)
         {
-            // Older or unusual builds may not answer. Assume present and let ffmpeg complain
-            // with a clear message rather than refusing to run at all.
-            _logger.LogDebug(ex, "Audio Normalizer: filter probe failed for {Filter}", filter);
-            return true;
+            // A failure is not cached: a corrected ffmpeg path should be picked up without
+            // restarting the server.
+            lock (_filterLock)
+            {
+                if (ReferenceEquals(_filterProbe, probe))
+                {
+                    _filterProbe = null;
+                }
+            }
         }
+
+        return result;
+    }
+
+    private async Task<HashSet<string>?> ProbeFiltersAsync()
+    {
+        // Its own timeout, and no caller's cancellation token: the result is shared, so one
+        // caller giving up must not poison it for every other caller.
+        var run = await RunAsync(
+            new[] { "-hide_banner", "-nostdin", "-filters" },
+            0,
+            null,
+            0,
+            TimeSpan.FromSeconds(30),
+            CancellationToken.None).ConfigureAwait(false);
+
+        if (!run.Success)
+        {
+            _logger.LogWarning(
+                "Audio Normalizer: could not list ffmpeg filters (exit {Code}), assuming they are all present",
+                run.ExitCode);
+            return null;
+        }
+
+        var names = ParseFilterList(run.StdOut);
+        _logger.LogDebug("Audio Normalizer: ffmpeg reports {Count} filters", names.Count);
+        return names;
+    }
+
+    /// <summary>Reads the filter names out of the table printed by <c>ffmpeg -filters</c>.</summary>
+    /// <param name="output">Raw stdout of the listing.</param>
+    /// <returns>Every filter name found.</returns>
+    private static HashSet<string> ParseFilterList(string output)
+    {
+        //  " T.. ebur128          A->V       EBU R128 scanner."
+        //    ^flags ^name          ^conversion
+        // The legend printed above the table ("  T.. = Timeline support") has no conversion
+        // column, which is what keeps it out of the set.
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var reader = new StringReader(output);
+
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 3
+                || parts[0].Length != 3
+                || !parts[2].Contains("->", StringComparison.Ordinal)
+                || !parts[0].All(c => c is 'T' or 'S' or 'C' or '.'))
+            {
+                continue;
+            }
+
+            names.Add(parts[1]);
+        }
+
+        return names;
     }
 
     /// <summary>Runs ffmpeg to completion.</summary>

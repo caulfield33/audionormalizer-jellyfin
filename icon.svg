@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Audio Normalizer">
+  <title>Audio Normalizer</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b2735"/>
+      <stop offset="1" stop-color="#0f1620"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+
+  <!-- The band everything is pulled into: the target loudness range. -->
+  <rect x="32" y="96" width="192" height="64" rx="10" fill="#3ddc97" opacity="0.12"/>
+  <line x1="32" y1="96" x2="224" y2="96" stroke="#3ddc97" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <line x1="32" y1="160" x2="224" y2="160" stroke="#3ddc97" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Source levels: explosions off the top, dialogue almost invisible. -->
+  <g fill="#8b9bad" opacity="0.32">
+    <rect x="48" y="36" width="12" height="184" rx="4"/>
+    <rect x="68" y="114" width="12" height="28" rx="4"/>
+    <rect x="88" y="40" width="12" height="176" rx="4"/>
+    <rect x="108" y="118" width="12" height="20" rx="4"/>
+    <rect x="128" y="32" width="12" height="192" rx="4"/>
+    <rect x="148" y="116" width="12" height="24" rx="4"/>
+    <rect x="168" y="44" width="12" height="168" rx="4"/>
+    <rect x="188" y="112" width="12" height="32" rx="4"/>
+    <rect x="208" y="38" width="12" height="180" rx="4"/>
+  </g>
+
+  <!-- The same audio after normalizing: everything inside the band. -->
+  <g fill="#3ddc97">
+    <rect x="48" y="96" width="12" height="64" rx="4"/>
+    <rect x="68" y="102" width="12" height="52" rx="4"/>
+    <rect x="88" y="98" width="12" height="60" rx="4"/>
+    <rect x="108" y="104" width="12" height="48" rx="4"/>
+    <rect x="128" y="96" width="12" height="64" rx="4"/>
+    <rect x="148" y="103" width="12" height="50" rx="4"/>
+    <rect x="168" y="98" width="12" height="60" rx="4"/>
+    <rect x="188" y="102" width="12" height="52" rx="4"/>
+    <rect x="208" y="97" width="12" height="62" rx="4"/>
+  </g>
+</svg>

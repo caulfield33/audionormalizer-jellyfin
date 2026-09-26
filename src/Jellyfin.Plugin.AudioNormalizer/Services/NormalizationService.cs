@@ -450,11 +450,16 @@ public sealed class NormalizationService
         }
 
         var folder = Path.GetDirectoryName(ctx.Item.Path);
-        result.FolderWritable = folder is not null && IsWritable(folder);
+
+        // Declared up front, not with 'out var' inside the &&: the right-hand side is
+        // short-circuited, so the compiler cannot prove the variable was ever assigned.
+        string? folderReason = folder is null ? "the item has no folder path" : null;
+        result.FolderWritable = folder is not null && FolderAccess.IsWritable(folder, out folderReason);
         if (!result.FolderWritable)
         {
             result.Problems.Add(
-                "The media folder is not writable. Jellyfin only discovers external audio next to the video file, so this item cannot be processed at all.");
+                "The media folder is not writable (" + (folder ?? "?") + "): " + folderReason
+                + ". Jellyfin only discovers external audio next to the video file, so this item cannot be processed at all.");
         }
 
         try
@@ -502,7 +507,7 @@ public sealed class NormalizationService
 
         foreach (var filter in FilterChainBuilder.RequiredFilters)
         {
-            if (!_ffmpeg.SupportsFilter(filter))
+            if (!await _ffmpeg.SupportsFilterAsync(filter).ConfigureAwait(false))
             {
                 result.Problems.Add("This ffmpeg build has no '" + filter + "' filter.");
             }
@@ -989,9 +994,10 @@ public sealed class NormalizationService
         // Jellyfin only discovers external audio in the media's own folder, so a read-only
         // library cannot be served by this approach at all. Say so plainly instead of
         // failing later with a permissions error.
-        if (!IsWritable(folder))
+        if (!FolderAccess.IsWritable(folder, out var reason))
         {
-            return "the media folder is not writable. Jellyfin only finds external audio next to the video, so this item cannot be processed.";
+            return "the media folder is not writable (" + folder + "): " + reason
+                + ". Jellyfin only finds external audio next to the video, so this item cannot be processed.";
         }
 
         var estimate = selected.Sum(_ => EstimateOutputBytes(ctx));
@@ -1189,22 +1195,6 @@ public sealed class NormalizationService
         }
 
         return new ItemContext(item, tracks, profile, duration);
-    }
-
-    private static bool IsWritable(string folder)
-    {
-        var probe = Path.Combine(folder, ".audionormalizer-probe-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose))
-            {
-                return true;
-            }
-        }
-        catch (Exception)
-        {
-            return false;
-        }
     }
 
     private static string Tail(string text, int lines)

@@ -231,8 +231,8 @@ $H nametest                     # title sanitising against Jellyfin's reserved w
 $H cmd 6 25.4 Dynaudnorm 9 auto DialogueStereo /path/to/film.mkv   # pasteable command
 ```
 
-To make a test file with quiet dialogue and loud explosions, and to measure results, see
-the recipes in `DEBUGGING.md`. In short: `ffmpeg -af ebur128=peak=true:framelog=quiet -f null -`
+To make a test file with quiet dialogue and loud explosions, and to measure results:
+`ffmpeg -af ebur128=peak=true:framelog=quiet -f null -`
 and read `I`, `LRA`, `True peak` from the summary.
 
 ---
@@ -301,8 +301,7 @@ commits the regenerated manifest. Tags must be `v<number>`.
 
 ## Documentation map
 
-- `README.md` — what it does, measured results, the anticipated-problems list.
-- `INSTALL.md` — installing, via GitHub or by hand, and how the manifest works.
-- `CHECKLIST.md` — the author's step-by-step for getting this live.
-- `DEBUGGING.md` — troubleshooting, log levels, the self-test endpoint.
+- `README.md` — what it does, measured results, install, the measured reasons behind the
+  defaults, limitations and the API surface. Written for the public.
+- `LICENSE` — MIT.
 - `CLAUDE.md` — this file.

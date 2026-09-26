@@ -552,7 +552,7 @@ public class AudioNormalizerController : ControllerBase
     /// <summary>Checks the environment and reports anything that would stop the plugin working.</summary>
     /// <returns>The diagnostics.</returns>
     [HttpGet("Diagnostics")]
-    public ActionResult<DiagnosticsResult> Diagnostics()
+    public async Task<ActionResult<DiagnosticsResult>> Diagnostics()
     {
         EnsureLoaded();
         var result = new DiagnosticsResult { FfmpegPath = _ffmpeg.EncoderPath };
@@ -560,7 +560,7 @@ public class AudioNormalizerController : ControllerBase
         foreach (var filter in FilterChainBuilder.RequiredFilters
                      .Concat(new[] { "dynaudnorm", "speechnorm", "acompressor" }))
         {
-            result.Filters[filter] = _ffmpeg.SupportsFilter(filter);
+            result.Filters[filter] = await _ffmpeg.SupportsFilterAsync(filter).ConfigureAwait(false);
         }
 
         var config = Config;
@@ -587,13 +587,25 @@ public class AudioNormalizerController : ControllerBase
             // Sample a handful of folders: an unwritable library is the single most common
             // reason this approach cannot work, and it is worth saying so before a long run.
             var unwritable = 0;
+            string? firstReason = null;
             foreach (var item in candidates.Take(25))
             {
                 var folder = Path.GetDirectoryName(item.Path);
-                if (folder is null || !IsWritable(folder))
+
+                // Declared before the &&, not with 'out var' inside it: the call is
+                // short-circuited when there is no folder, so the compiler cannot prove
+                // the variable was assigned.
+                string? reason = folder is null ? "the item has no folder path" : null;
+                if (folder is not null && FolderAccess.IsWritable(folder, out reason))
                 {
-                    unwritable++;
+                    continue;
                 }
+
+                unwritable++;
+
+                // One concrete path and the OS message beats a bare count: "not writable"
+                // on its own gives nobody anything to go and fix.
+                firstReason ??= (folder ?? item.Path) + " - " + reason;
             }
 
             if (unwritable > 0)
@@ -601,7 +613,7 @@ public class AudioNormalizerController : ControllerBase
                 result.Warnings.Add(
                     string.Create(
                         CultureInfo.InvariantCulture,
-                        $"{unwritable} of the first 25 media folders are not writable. Jellyfin only finds external audio tracks next to the video file, so those items cannot be processed."));
+                        $"{unwritable} of the first 25 media folders are not writable. Jellyfin only finds external audio tracks next to the video file, so those items cannot be processed. First one: {firstReason}"));
             }
         }
         catch (Exception ex)
@@ -611,22 +623,6 @@ public class AudioNormalizerController : ControllerBase
         }
 
         return Ok(result);
-    }
-
-    private static bool IsWritable(string folder)
-    {
-        var probe = Path.Combine(folder, ".audionormalizer-probe-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose))
-            {
-                return true;
-            }
-        }
-        catch (Exception)
-        {
-            return false;
-        }
     }
 
     private void EnsureLoaded()

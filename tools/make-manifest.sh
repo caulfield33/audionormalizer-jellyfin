@@ -27,7 +27,8 @@ OUT="$ROOT/manifest.json"
 PLUGIN_GUID="2a968ad7-6168-44c8-b149-cf94eb870b25"
 PLUGIN_NAME="Audio Normalizer"
 REPO_NAME="${REPO_NAME:-Audio Normalizer}"
-CHANGELOG="${CHANGELOG:-}"
+PLUGIN_OWNER="${PLUGIN_OWNER:-Vasyl Lukinchuk}"
+CHANGELOG="${CHANGELOG:-See the release notes for this version.}"
 
 BASE_URL="${1:-}"
 [ -n "$BASE_URL" ] || { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
@@ -46,6 +47,10 @@ if [ -z "$MANIFEST_URL" ]; then
     echo "      pass it as the second argument if the manifest lives elsewhere," >&2
     echo "      e.g. https://raw.githubusercontent.com/USER/REPO/main/manifest.json" >&2
 fi
+
+# The catalogue thumbnail, shown before the plugin is installed. It sits next to the manifest
+# in the repository, so it is derived from that URL rather than asking for a third argument.
+IMAGE_URL="${IMAGE_URL:-${MANIFEST_URL%/*}/icon.svg}"
 
 entries=""
 for m in "${metas[@]}"; do
@@ -97,9 +102,9 @@ cat > "$OUT" <<EOF
         "name": "$PLUGIN_NAME",
         "description": "Builds a second, loudness-normalized audio track next to each film so dialogue stays audible without explosions being painful. Originals are never modified.",
         "overview": "Normalized companion audio tracks",
-        "owner": "self-hosted",
+        "owner": "$PLUGIN_OWNER",
         "category": "General",
-        "imageUrl": null,
+        "imageUrl": "$IMAGE_URL",
         "versions": [$entries
         ]
     }

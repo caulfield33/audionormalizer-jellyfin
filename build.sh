@@ -20,6 +20,11 @@ PROJECT="$ROOT/src/Jellyfin.Plugin.AudioNormalizer/Jellyfin.Plugin.AudioNormaliz
 ARTIFACTS="$ROOT/artifacts"
 PLUGIN_NAME="Audio Normalizer"
 PLUGIN_GUID="2a968ad7-6168-44c8-b149-cf94eb870b25"
+PLUGIN_OWNER="${PLUGIN_OWNER:-Vasyl Lukinchuk}"
+# Shown in the plugin catalogue. The release workflow passes real notes; the fallback
+# points at the GitHub release rather than lying with a fixed "Initial release." It goes
+# straight into meta.json, so keep it free of quotes and newlines.
+CHANGELOG="${CHANGELOG:-See the release notes for this version.}"
 RELEASE="${RELEASE:-0}"
 
 build_one() {
@@ -55,6 +60,13 @@ build_one() {
     cp "$outdir/Jellyfin.Plugin.AudioNormalizer.dll" "$stage/"
     [ -f "$outdir/Jellyfin.Plugin.AudioNormalizer.pdb" ] && cp "$outdir/Jellyfin.Plugin.AudioNormalizer.pdb" "$stage/" || true
 
+    # MIT asks for the notice to travel with every copy, and a plain text file next to
+    # meta.json is inert at load time - the rule above is about assemblies, not documents.
+    cp "$ROOT/LICENSE" "$stage/"
+
+    # Jellyfin serves this as the plugin icon via meta.json's imagePath.
+    cp "$ROOT/icon.svg" "$stage/"
+
     cat > "$stage/meta.json" <<EOF
 {
     "category": "General",
@@ -62,12 +74,13 @@ build_one() {
     "name": "$PLUGIN_NAME",
     "description": "Builds a second, loudness-normalized audio track next to each film so dialogue stays audible without explosions being painful. Originals are never modified.",
     "overview": "Normalized companion audio tracks",
-    "owner": "self-hosted",
+    "imagePath": "icon.svg",
+    "owner": "$PLUGIN_OWNER",
     "targetAbi": "$abi",
     "framework": "$tfm",
     "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     "version": "$version",
-    "changelog": "Initial release."
+    "changelog": "$CHANGELOG"
 }
 EOF
 

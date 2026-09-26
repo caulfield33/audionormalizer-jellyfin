@@ -39,6 +39,7 @@ jobs:
         env:
           # v3 -> RELEASE=3, so plugin versions become 1.0.0.3 and 2.0.0.3
           TAG: ${{ steps.tag.outputs.name }}
+          REPO: ${{ github.repository }}
         run: |
           RELEASE="${TAG#v}"
           # The last component of a .NET version is a single number, so the tag has to be
@@ -48,6 +49,8 @@ jobs:
             exit 1
           fi
           export RELEASE
+          # Shows up in the plugin catalogue, so point it at the release notes this tag generates.
+          export CHANGELOG="Release $TAG - https://github.com/$REPO/releases/tag/$TAG"
           chmod +x build.sh tools/make-manifest.sh
           ./build.sh both
 
@@ -64,6 +67,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           BRANCH="${{ github.event.repository.default_branch }}"
+          export CHANGELOG="Release $TAG - https://github.com/$REPO/releases/tag/$TAG"
           ./tools/make-manifest.sh \
             "https://github.com/$REPO/releases/download/$TAG" \
             "https://raw.githubusercontent.com/$REPO/$BRANCH/manifest.json"
