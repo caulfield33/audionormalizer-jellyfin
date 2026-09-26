@@ -25,6 +25,10 @@ RELEASE="${RELEASE:-0}"
 build_one() {
     local jfver="$1" tfm abi outdir stage version
 
+    # abi must stay equal to JellyfinPackageVersion in the csproj. The server only checks
+    # that its own version is >= targetAbi; it never checks which API the DLL was compiled
+    # against, so a targetAbi lower than the referenced package is a promise the binary
+    # cannot keep and the plugin loads as NotSupported.
     case "$jfver" in
         12)    tfm="net10.0"; abi="12.0.0.0";  version="2.0.0.$RELEASE" ;;
         10.11) tfm="net9.0";  abi="10.11.0.0"; version="1.0.0.$RELEASE" ;;
