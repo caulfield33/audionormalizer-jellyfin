@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    COMPILE-CHECK STUBS ONLY. Not shipped, not used by the real build.
+    These mirror the public signatures of the Jellyfin types the plugin touches,
+    copied from jellyfin/jellyfin release-12.z, so the plugin can be type-checked
+    on a machine that cannot reach nuget.org. The real build uses the official
+    Jellyfin.Controller / Jellyfin.Model NuGet packages (see build.sh / CI).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>JellyfinStubs</AssemblyName>
+    <RootNamespace>JellyfinStubs</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+</Project>

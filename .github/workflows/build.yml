@@ -1,0 +1,42 @@
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - jellyfin: "12"
+            dotnet: "10.0.x"
+          - jellyfin: "10.11"
+            dotnet: "9.0.x"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+
+      - name: Restore
+        run: dotnet restore src/Jellyfin.Plugin.AudioNormalizer/Jellyfin.Plugin.AudioNormalizer.csproj -p:JellyfinVersion=${{ matrix.jellyfin }}
+
+      - name: Build
+        run: dotnet build src/Jellyfin.Plugin.AudioNormalizer/Jellyfin.Plugin.AudioNormalizer.csproj -c Release -p:JellyfinVersion=${{ matrix.jellyfin }} --no-restore
+
+      - name: Package
+        run: ./build.sh ${{ matrix.jellyfin }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-normalizer-jellyfin-${{ matrix.jellyfin }}
+          path: artifacts/*.zip

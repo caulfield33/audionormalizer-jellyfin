@@ -1,0 +1,77 @@
+name: release
+
+# Push a tag like v1, v2, v3 (a plain counter, nothing else) and this builds both variants, publishes them as
+# release assets, regenerates manifest.json to point at those assets, and commits it
+# back to the default branch. Jellyfin then sees the new version on its next check.
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: tag
+        run: echo "name=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Build both variants
+        env:
+          # v3 -> RELEASE=3, so plugin versions become 1.0.0.3 and 2.0.0.3
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          RELEASE="${TAG#v}"
+          # The last component of a .NET version is a single number, so the tag has to be
+          # a plain counter. Fail loudly rather than emitting an invalid version.
+          if ! [[ "$RELEASE" =~ ^[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' must be v<number>, for example v1, v2, v3." >&2
+            exit 1
+          fi
+          export RELEASE
+          chmod +x build.sh tools/make-manifest.sh
+          ./build.sh both
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          files: artifacts/*.zip
+          generate_release_notes: true
+
+      - name: Regenerate manifest
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+          REPO: ${{ github.repository }}
+        run: |
+          BRANCH="${{ github.event.repository.default_branch }}"
+          ./tools/make-manifest.sh \
+            "https://github.com/$REPO/releases/download/$TAG" \
+            "https://raw.githubusercontent.com/$REPO/$BRANCH/manifest.json"
+
+      - name: Commit manifest
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git diff --staged --quiet || git commit -m "Update manifest for ${{ steps.tag.outputs.name }}"
+          git push

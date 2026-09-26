@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      JellyfinVersion picks which server this build targets.
+        12   -> Jellyfin 12.x  (net10.0)  - current stable
+        10.11-> Jellyfin 10.11.x (net9.0)
+      Override on the command line:  dotnet build -p:JellyfinVersion=10.11
+    -->
+    <JellyfinVersion Condition="'$(JellyfinVersion)' == ''">12</JellyfinVersion>
+
+    <TargetFramework Condition="'$(JellyfinVersion)' == '12'">net10.0</TargetFramework>
+    <TargetFramework Condition="'$(JellyfinVersion)' == '10.11'">net9.0</TargetFramework>
+
+    <JellyfinPackageVersion Condition="'$(JellyfinVersion)' == '12'">12.*</JellyfinPackageVersion>
+    <JellyfinPackageVersion Condition="'$(JellyfinVersion)' == '10.11'">10.11.*</JellyfinPackageVersion>
+
+    <!--
+      Version scheme. One repository manifest can serve both Jellyfin lines because the
+      server keeps only entries whose targetAbi is <= its own version, then installs the
+      HIGHEST plugin version left. So the build for the newer server must carry the higher
+      plugin version, or a Jellyfin 12 box would install the 10.11 assembly:
+
+        Jellyfin 10.11 -> plugin 1.0.0.x   (targetAbi 10.11.0.0)
+        Jellyfin 12    -> plugin 2.0.0.x   (targetAbi 12.0.0.0)
+
+      Bump only the last component for a new release. Override with -p:PluginVersion=.
+    -->
+    <PluginVersion Condition="'$(PluginVersion)' == '' and '$(JellyfinVersion)' == '12'">2.0.0.0</PluginVersion>
+    <PluginVersion Condition="'$(PluginVersion)' == '' and '$(JellyfinVersion)' == '10.11'">1.0.0.0</PluginVersion>
+    <PluginVersion Condition="'$(PluginVersion)' == ''">2.0.0.0</PluginVersion>
+
+    <AssemblyName>Jellyfin.Plugin.AudioNormalizer</AssemblyName>
+    <RootNamespace>Jellyfin.Plugin.AudioNormalizer</RootNamespace>
+    <AssemblyVersion>$(PluginVersion)</AssemblyVersion>
+    <FileVersion>$(PluginVersion)</FileVersion>
+    <Version>$(PluginVersion)</Version>
+
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <!--
+      CA1848/CA1873 push every log call through a compiled LoggerMessage delegate. For a
+      plugin that logs a handful of lines per film that is noise, not performance.
+      CA1711 objects to the name JobQueue; it is a queue. CA1861 is about constant arrays
+      in rarely-called methods.
+    -->
+    <NoWarn>$(NoWarn);CA1848;CA1873;CA1711;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The config page is served straight out of the assembly; the paths here must match
+      the EmbeddedResourcePath strings in Plugin.GetPages().
+    -->
+    <EmbeddedResource Include="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\configPage.js" />
+  </ItemGroup>
+
+  <!-- Normal build: the official Jellyfin packages. -->
+  <ItemGroup Condition="'$(UseJellyfinStubs)' != 'true'">
+    <PackageReference Include="Jellyfin.Controller" Version="$(JellyfinPackageVersion)" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JellyfinPackageVersion)" />
+  </ItemGroup>
+
+  <!--
+    Offline type-check only. Builds against hand-written stubs that mirror the Jellyfin
+    signatures, for environments with no access to nuget.org. Never ship this output.
+  -->
+  <ItemGroup Condition="'$(UseJellyfinStubs)' == 'true'">
+    <ProjectReference Include="..\..\build\stubs\JellyfinStubs.csproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
