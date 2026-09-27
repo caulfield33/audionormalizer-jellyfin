@@ -230,26 +230,68 @@
         });
     }
 
+    // Built as DOM nodes rather than an HTML string. The rows carry a button now, and film
+    // names come from library metadata, which has no business being parsed as markup.
+    function queueRow(page, job, status) {
+        var row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.marginTop = '.25em';
+
+        var name = document.createElement('span');
+        name.style.marginRight = '.6em';
+        name.textContent = job.ItemName + ' · ' + t('queue.kind.' + job.Kind) + ' · ' + status;
+        row.appendChild(name);
+
+        var drop = document.createElement('button');
+        drop.className = 'raised';
+        drop.textContent = t('btn.dequeue');
+        drop.title = t('btn.dequeue.tip');
+        drop.addEventListener('click', function () {
+            api('POST', 'Dequeue', { ItemIds: [job.ItemId] }).then(function () {
+                loadStatus(page);
+                loadReport(page);
+            });
+        });
+        row.appendChild(drop);
+
+        return row;
+    }
+
     function loadStatus(page) {
         api('GET', 'Status').then(function (s) {
-            var text = t('queue.line', {
+            var host = page.querySelector('#anQueue');
+            host.innerHTML = '';
+
+            var line = document.createElement('div');
+            line.textContent = t('queue.line', {
                 pending: s.Pending,
                 running: s.Running.length,
                 done: s.Completed,
                 failed: s.Failed
             });
             if (s.PausedForPlayback) {
-                text += t('queue.pausedPlayback');
+                line.textContent += t('queue.pausedPlayback');
             }
-            if (s.Running.length) {
-                text += '<br/>' + s.Running.map(function (j) {
-                    return j.ItemName + ' — ' + num(j.Progress, 0) + '%';
-                }).join('<br/>');
-            }
+            host.appendChild(line);
+
+            (s.Running || []).forEach(function (j) {
+                host.appendChild(queueRow(page, j, t('queue.runningPct', { percent: num(j.Progress, 0) })));
+            });
+
+            // The waiting list used to be a bare count, which is no help at all when the
+            // question is "what is it still going to do, and can I take that one out".
+            (s.PendingJobs || []).forEach(function (j) {
+                host.appendChild(queueRow(page, j, t('queue.waiting')));
+            });
+
             if (s.LastMessage) {
-                text += '<br/><span style="opacity:.75;">' + s.LastMessage + '</span>';
+                var last = document.createElement('div');
+                last.style.opacity = '.75';
+                last.style.marginTop = '.4em';
+                last.textContent = s.LastMessage;
+                host.appendChild(last);
             }
-            page.querySelector('#anQueue').innerHTML = text;
         });
     }
 

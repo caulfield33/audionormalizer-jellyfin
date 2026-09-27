@@ -451,10 +451,32 @@ public class AudioNormalizerController : ControllerBase
         return Ok(_queue.Enqueue(ResolveIds(request), JobKind.Generate, request.Force));
     }
 
-    /// <summary>Empties the queue.</summary>
-    /// <returns>How many jobs were dropped.</returns>
+    /// <summary>Stops everything: drops what is waiting and cancels what is running.</summary>
+    /// <returns>How many jobs were dropped or cancelled.</returns>
     [HttpPost("Cancel")]
     public ActionResult<int> CancelQueue() => Ok(_queue.Clear());
+
+    /// <summary>Takes specific items out of the queue, cancelling them if they are running.</summary>
+    /// <param name="request">Which items.</param>
+    /// <returns>How many were removed.</returns>
+    [HttpPost("Dequeue")]
+    public ActionResult<int> DequeueItems([FromBody] QueueRequest request)
+    {
+        EnsureLoaded();
+
+        // Deliberately not ResolveIds: an empty list there means "every candidate", which for
+        // removal would quietly empty the whole queue. Here it means nothing to do.
+        var ids = new List<Guid>();
+        foreach (var raw in request.ItemIds)
+        {
+            if (Guid.TryParse(raw, out var id))
+            {
+                ids.Add(id);
+            }
+        }
+
+        return Ok(_queue.Dequeue(ids));
+    }
 
     /// <summary>Deletes generated tracks for an item.</summary>
     /// <param name="itemId">Item id.</param>

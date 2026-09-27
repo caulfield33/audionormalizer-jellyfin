@@ -51,6 +51,9 @@ public sealed class QueueStatus
     /// <summary>Gets or sets the number of jobs waiting.</summary>
     public int Pending { get; set; }
 
+    /// <summary>Gets or sets the jobs waiting, in the order they will run.</summary>
+    public List<QueuedJob> PendingJobs { get; set; } = new List<QueuedJob>();
+
     /// <summary>Gets or sets the jobs currently running.</summary>
     public List<QueuedJob> Running { get; set; } = new List<QueuedJob>();
 
@@ -84,6 +87,9 @@ public sealed class JobQueue : IHostedService, IDisposable
     private readonly HashSet<Guid> _queued = new();
     private readonly object _queuedLock = new();
     private readonly SemaphoreSlim _signal = new(0);
+
+    // One per running job, so a single item can be stopped without touching the others.
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _jobCancels = new();
 
     private CancellationTokenSource? _cts;
     private Task? _pump;
@@ -122,6 +128,10 @@ public sealed class JobQueue : IHostedService, IDisposable
         {
             _store.EnsureLoaded(Plugin.Instance.DataFolderPath);
         }
+
+        // A restart in the middle of a run leaves tracks marked queued or running for ever,
+        // and the report believes it. Clear that before the pump starts.
+        ResetPendingStates(includeRunning: true);
 
         _cts = new CancellationTokenSource();
         _pump = Task.Run(() => PumpAsync(_cts.Token), CancellationToken.None);
@@ -192,11 +202,15 @@ public sealed class JobQueue : IHostedService, IDisposable
         return added;
     }
 
-    /// <summary>Empties the queue. Jobs already running are left to finish.</summary>
-    /// <returns>How many jobs were dropped.</returns>
+    /// <summary>
+    /// Stops everything: drops what is waiting, cancels what is running, and puts the state of
+    /// every affected track back so the report stops claiming the work is queued.
+    /// </summary>
+    /// <returns>How many jobs were dropped or cancelled.</returns>
     public int Clear()
     {
-        var dropped = 0;
+        var stopped = 0;
+
         while (_queue.TryDequeue(out var job))
         {
             lock (_queuedLock)
@@ -204,24 +218,147 @@ public sealed class JobQueue : IHostedService, IDisposable
                 _queued.Remove(job.ItemId);
             }
 
-            var record = _store.Get(job.ItemId);
-            if (record is not null)
-            {
-                foreach (var track in record.AudioTracks)
-                {
-                    if (track.State == TrackState.Queued)
-                    {
-                        track.State = track.Source is null ? TrackState.Unknown : TrackState.Analyzed;
-                    }
-                }
-
-                _store.Put(record);
-            }
-
-            dropped++;
+            stopped++;
         }
 
-        return dropped;
+        // Running jobs are cancelled rather than left to finish. The button says stop, and a
+        // cancelled encode cleans up its own part file, so nothing is left half written.
+        foreach (var pair in _jobCancels)
+        {
+            try
+            {
+                pair.Value.Cancel();
+                stopped++;
+            }
+            catch (ObjectDisposedException)
+            {
+                // The job finished between the snapshot and the cancel. Nothing to do.
+            }
+        }
+
+        // A sweep of the whole store, not just the jobs above: an item whose job was refused
+        // early - excluded, file missing, no audio - never had its track states cleared, so the
+        // table went on showing "queued" for work that had already been abandoned.
+        ResetPendingStates(includeRunning: true);
+
+        _logger.LogInformation("Audio Normalizer: queue stopped, {Count} job(s) dropped or cancelled", stopped);
+        return stopped;
+    }
+
+    /// <summary>Takes specific items out of the queue, cancelling them if they are running.</summary>
+    /// <param name="itemIds">Items to remove.</param>
+    /// <returns>How many were removed.</returns>
+    public int Dequeue(IEnumerable<Guid> itemIds)
+    {
+        var wanted = new HashSet<Guid>(itemIds);
+        if (wanted.Count == 0)
+        {
+            return 0;
+        }
+
+        var removed = 0;
+
+        // A ConcurrentQueue cannot drop from the middle, so it is drained and refilled. Anything
+        // enqueued meanwhile simply lands behind the survivors, which is harmless.
+        var keep = new List<QueuedJob>();
+        while (_queue.TryDequeue(out var job))
+        {
+            if (wanted.Contains(job.ItemId))
+            {
+                lock (_queuedLock)
+                {
+                    _queued.Remove(job.ItemId);
+                }
+
+                ClearQueuedState(job.ItemId);
+                removed++;
+            }
+            else
+            {
+                keep.Add(job);
+            }
+        }
+
+        foreach (var job in keep)
+        {
+            _queue.Enqueue(job);
+        }
+
+        foreach (var id in wanted)
+        {
+            if (_jobCancels.TryGetValue(id, out var cts))
+            {
+                try
+                {
+                    cts.Cancel();
+                    removed++;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Finished on its own in the meantime.
+                }
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// Puts tracks left claiming to be queued back to where they were. Called after a stop and
+    /// at startup, because a server restart in the middle of a run leaves the same lie behind.
+    /// </summary>
+    /// <param name="includeRunning">Also reset tracks stuck in the running state.</param>
+    private void ResetPendingStates(bool includeRunning)
+    {
+        foreach (var record in _store.All())
+        {
+            var touched = false;
+            foreach (var track in record.AudioTracks)
+            {
+                var stale = track.State == TrackState.Queued
+                    || (includeRunning && track.State == TrackState.Running);
+                if (!stale)
+                {
+                    continue;
+                }
+
+                track.State = track.Source is null ? TrackState.Unknown : TrackState.Analyzed;
+                touched = true;
+            }
+
+            if (touched)
+            {
+                _store.Put(record);
+            }
+        }
+    }
+
+    /// <summary>Resets the queued tracks of one item.</summary>
+    /// <param name="itemId">The item.</param>
+    private void ClearQueuedState(Guid itemId)
+    {
+        var record = _store.Get(itemId);
+        if (record is null)
+        {
+            return;
+        }
+
+        var touched = false;
+        foreach (var track in record.AudioTracks)
+        {
+            if (track.State != TrackState.Queued)
+            {
+                continue;
+            }
+
+            track.State = track.Source is null ? TrackState.Unknown : TrackState.Analyzed;
+            touched = true;
+        }
+
+        if (touched)
+        {
+            _store.Put(record);
+        }
     }
 
     /// <summary>Gets a snapshot for the settings page.</summary>
@@ -229,6 +366,7 @@ public sealed class JobQueue : IHostedService, IDisposable
     public QueueStatus GetStatus() => new QueueStatus
     {
         Pending = _queue.Count,
+        PendingJobs = _queue.ToList(),
         Running = _running.Values.ToList(),
         PausedForPlayback = _pausedForPlayback,
         Completed = _completed,
@@ -317,6 +455,19 @@ public sealed class JobQueue : IHostedService, IDisposable
                 workers.Remove(finished);
             }
 
+            // A stop that arrived while this job waited - for playback to end, or for a worker
+            // slot - must drop it. Once dequeued it is invisible to Clear(), so without this it
+            // would start anyway and look like the stop was ignored. That is exactly what
+            // "I stopped it and it kept going" was.
+            lock (_queuedLock)
+            {
+                if (!_queued.Contains(job.ItemId))
+                {
+                    ClearQueuedState(job.ItemId);
+                    continue;
+                }
+            }
+
             workers.Add(Task.Run(() => RunJobAsync(job, token), CancellationToken.None));
         }
 
@@ -338,13 +489,18 @@ public sealed class JobQueue : IHostedService, IDisposable
         job.StartedUtc = startedUtc;
         _running[job.ItemId] = job;
 
+        // Its own cancellation source, linked to the pump's, so one item can be stopped without
+        // disturbing the others.
+        using var jobCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        _jobCancels[job.ItemId] = jobCts;
+
         var progress = new Progress<double>(p => job.Progress = p);
 
         try
         {
             var outcome = job.Kind == JobKind.Analyze
-                ? await _service.AnalyzeAsync(job.ItemId, progress, token).ConfigureAwait(false)
-                : await _service.GenerateAsync(job.ItemId, job.Force, progress, token).ConfigureAwait(false);
+                ? await _service.AnalyzeAsync(job.ItemId, progress, jobCts.Token).ConfigureAwait(false)
+                : await _service.GenerateAsync(job.ItemId, job.Force, progress, jobCts.Token).ConfigureAwait(false);
 
             if (outcome.Success)
             {
@@ -369,11 +525,17 @@ public sealed class JobQueue : IHostedService, IDisposable
         }
         finally
         {
+            _jobCancels.TryRemove(job.ItemId, out _);
             _running.TryRemove(job.ItemId, out _);
             lock (_queuedLock)
             {
                 _queued.Remove(job.ItemId);
             }
+
+            // Whatever happened, this item is no longer queued. A job refused early - excluded,
+            // file missing, no audio - never set its tracks to anything, so they kept claiming
+            // to be queued long after the queue had emptied.
+            ClearQueuedState(job.ItemId);
 
             _store.Flush();
 
