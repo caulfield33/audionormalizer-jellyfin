@@ -432,13 +432,25 @@ public class AudioNormalizerController : ControllerBase
     public ActionResult<QueueStatus> GetStatus() => Ok(_queue.GetStatus());
 
     /// <summary>Queues measurement.</summary>
-    /// <param name="request">Which items.</param>
+    /// <param name="request">
+    /// Which items. An empty list means the whole library, and then anything already measured is
+    /// left alone unless <c>Force</c> is set.
+    /// </param>
     /// <returns>How many were queued.</returns>
     [HttpPost("Analyze")]
     public ActionResult<int> QueueAnalyze([FromBody] QueueRequest request)
     {
         EnsureLoaded();
-        return Ok(_queue.Enqueue(ResolveIds(request), JobKind.Analyze, false));
+
+        // The scheduled task has always skipped what is already measured; this endpoint did not,
+        // so pressing "measure the whole library" re-decoded every film that already had numbers.
+        // Same rule now, with Force as the way to ask for it anyway - which the per-film button
+        // does, because pressing it on one title means "measure this now".
+        var ids = request.Force
+            ? ResolveIds(request)
+            : ResolveIds(request).Where(id => _service.NeedsMeasuring(id));
+
+        return Ok(_queue.Enqueue(ids, JobKind.Analyze, false));
     }
 
     /// <summary>Queues track generation.</summary>

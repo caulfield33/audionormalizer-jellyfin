@@ -594,7 +594,9 @@
                 measure.textContent = t('btn.measure');
                 measure.title = t('btn.measure.tip');
                 measure.addEventListener('click', function () {
-                    api('POST', 'Analyze', { ItemIds: [r.ItemId] }).then(function () {
+                    // Force: pressing measure on one film means measure it now, even if it
+                    // already has numbers.
+                    api('POST', 'Analyze', { ItemIds: [r.ItemId], Force: true }).then(function () {
                         loadStatus(page);
                     });
                 });

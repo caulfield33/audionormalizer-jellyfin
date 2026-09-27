@@ -74,11 +74,7 @@ public class AnalyzeLibraryTask : IScheduledTask, IConfigurableScheduledTask
 
         // Only measure what has not been measured, so a weekly run over a big library is cheap
         // after the first pass.
-        var pending = items.Where(i =>
-        {
-            var r = _store.Get(i.Id);
-            return r is null || r.AudioTracks.Count == 0 || r.AudioTracks.TrueForAll(t => t.Source is null);
-        }).ToList();
+        var pending = items.Where(i => _service.NeedsMeasuring(i.Id)).ToList();
 
         _logger.LogInformation(
             "Audio Normalizer: {Pending} of {Total} items still need measuring",

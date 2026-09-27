@@ -679,6 +679,20 @@ public sealed class NormalizationService
         }
     }
 
+    /// <summary>
+    /// Whether an item has no usable measurement yet. One predicate shared by the scheduled task
+    /// and the API, so "measure the library" means the same thing however it is started.
+    /// </summary>
+    /// <param name="itemId">The item.</param>
+    /// <returns>True when nothing has been measured for it.</returns>
+    public bool NeedsMeasuring(Guid itemId)
+    {
+        var record = _store.Get(itemId);
+        return record is null
+            || record.AudioTracks.Count == 0
+            || record.AudioTracks.TrueForAll(t => t.Source is null);
+    }
+
     /// <summary>Lists items the scheduled tasks should consider.</summary>
     /// <returns>Candidate items.</returns>
     public IReadOnlyList<BaseItem> GetCandidateItems()
