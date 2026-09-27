@@ -61,6 +61,9 @@ public class TrackRow
     /// <summary>Gets or sets the measured true peak.</summary>
     public double? SourcePeakDb { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the numbers come from a quick scan.</summary>
+    public bool SourceIsEstimate { get; set; }
+
     /// <summary>Gets or sets the dynamic range of the generated track.</summary>
     public double? ResultRangeLu { get; set; }
 
@@ -112,6 +115,9 @@ public class ReportRow
 
     /// <summary>Gets or sets the measured true peak.</summary>
     public double? SourcePeakDb { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the numbers come from a quick scan.</summary>
+    public bool SourceIsEstimate { get; set; }
 
     /// <summary>Gets or sets the resulting loudness of the generated track.</summary>
     public double? ResultLufs { get; set; }
@@ -253,108 +259,171 @@ public class AudioNormalizerController : ControllerBase
         EnsureLoaded();
         var config = Config;
         var rows = new List<ReportRow>();
+        var listed = new HashSet<Guid>();
 
+        // Candidates first, including films nothing has been done to yet. Their audio tracks
+        // come out of Jellyfin's own stream metadata and cost no ffmpeg, so a film can be
+        // expanded and its tracks ticked before anything is measured. The report used to be
+        // built from the store alone, which left a film invisible until after it had been
+        // scanned - exactly backwards for deciding what to scan.
+        foreach (var item in _service.GetCandidateItems())
+        {
+            listed.Add(item.Id);
+
+            var record = _store.Get(item.Id);
+            var over = config.FindOverride(item.Id);
+            var profile = over?.Profile ?? config.GlobalProfile;
+
+            var row = BuildReportRow(
+                item.Id,
+                string.IsNullOrEmpty(record?.ItemName) ? item.Name ?? string.Empty : record.ItemName,
+                string.IsNullOrEmpty(record?.ItemKind) ? item.GetType().Name : record.ItemKind,
+                record is not null && record.DurationSeconds > 0
+                    ? record.DurationSeconds
+                    : (item.RunTimeTicks ?? 0) / (double)TimeSpan.TicksPerSecond,
+                record,
+                over,
+                profile);
+
+            if (onlyProblems && (!row.SourceRangeLu.HasValue || row.SourceRangeLu.Value <= profile.TargetDynamicRangeLu))
+            {
+                continue;
+            }
+
+            rows.Add(row);
+        }
+
+        // Records whose item is no longer a candidate: gone from the library, moved out of an
+        // enabled folder, or now under the duration threshold. They stay listed so the tracks
+        // they generated remain visible and deletable.
         foreach (var record in _store.All())
         {
-            if (!Guid.TryParse(record.ItemId, out var id))
+            if (!Guid.TryParse(record.ItemId, out var id) || listed.Contains(id))
             {
                 continue;
             }
 
             var over = config.FindOverride(id);
             var profile = over?.Profile ?? config.GlobalProfile;
+            var row = BuildReportRow(id, record.ItemName, record.ItemKind, record.DurationSeconds, record, over, profile);
 
-            var row = new ReportRow
+            if (onlyProblems && (!row.SourceRangeLu.HasValue || row.SourceRangeLu.Value <= profile.TargetDynamicRangeLu))
             {
-                ItemId = record.ItemId,
-                Name = record.ItemName,
-                Kind = record.ItemKind,
-                Minutes = Math.Round(record.DurationSeconds / 60.0, 1),
-                State = record.RollupState().ToString(),
-                HasOverride = over is not null,
-                Excluded = over?.Excluded ?? false,
-                Note = record.LastError ?? record.SkipReason
-            };
-
-            // Names are allocated per item so two tracks of one film never collide, and the
-            // report shows exactly what the player will display.
-            var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var track in record.AudioTracks)
-            {
-                var plannedTitle = OutputNaming.BuildTitle(profile, track);
-                if (!taken.Add(plannedTitle))
-                {
-                    plannedTitle += "-" + track.StreamIndex.ToString(CultureInfo.InvariantCulture);
-                    taken.Add(plannedTitle);
-                }
-
-                row.Tracks.Add(new TrackRow
-                {
-                    StreamIndex = track.StreamIndex,
-                    Label = track.Label,
-                    Language = track.Language,
-                    Channels = track.Channels,
-                    IsDefault = track.IsDefault,
-                    IsCommentary = track.IsCommentary,
-                    Selected = track.Selected,
-                    SelectionIsExplicit = track.SelectionIsExplicit,
-                    SourceLufs = track.Source?.IntegratedLufs,
-                    SourceRangeLu = track.Source?.LoudnessRangeLu,
-                    SourceLowLufs = track.Source?.RangeLowLufs,
-                    SourceHighLufs = track.Source?.RangeHighLufs,
-                    SourcePeakDb = track.Source?.TruePeakDb,
-                    ResultRangeLu = track.Result?.LoudnessRangeLu,
-                    PlannedTitle = plannedTitle,
-                    State = track.State.ToString(),
-                    OutputMb = Math.Round(track.OutputSize / 1024.0 / 1024.0, 1),
-                    OutputPath = track.OutputPath,
-                    Note = track.LastError ?? track.SkipReason
-                });
-            }
-
-            row.SelectedCount = row.Tracks.Count(t => t.Selected);
-
-            // The collapsed row summarises the selected tracks, falling back to the worst
-            // track so a film with nothing selected still shows why it might be worth doing.
-            var headline = row.Tracks.Where(t => t.Selected && t.SourceRangeLu.HasValue).ToList();
-            if (headline.Count == 0)
-            {
-                headline = row.Tracks.Where(t => t.SourceRangeLu.HasValue).ToList();
-            }
-
-            var worst = headline.OrderByDescending(t => t.SourceRangeLu ?? -1).FirstOrDefault();
-            if (worst is not null)
-            {
-                row.SourceTrack = worst.Label;
-                row.SourceLufs = worst.SourceLufs;
-                row.SourceRangeLu = worst.SourceRangeLu;
-                row.SourceLowLufs = worst.SourceLowLufs;
-                row.SourceHighLufs = worst.SourceHighLufs;
-                row.SourcePeakDb = worst.SourcePeakDb;
-                row.ResultRangeLu = worst.ResultRangeLu;
-                row.OutputMb = Math.Round(row.Tracks.Sum(t => t.OutputMb), 1);
-                row.OutputPath = row.Tracks.FirstOrDefault(t => t.OutputPath is not null)?.OutputPath;
-            }
-
-            if (row.SourceRangeLu.HasValue && row.ResultRangeLu.HasValue)
-            {
-                row.RangeImprovement = Math.Round(row.SourceRangeLu.Value - row.ResultRangeLu.Value, 1);
-            }
-
-            if (onlyProblems)
-            {
-                var target = profile.TargetDynamicRangeLu;
-                if (!row.SourceRangeLu.HasValue || row.SourceRangeLu.Value <= target)
-                {
-                    continue;
-                }
+                continue;
             }
 
             rows.Add(row);
         }
 
         return Ok(rows.OrderByDescending(r => r.SourceRangeLu ?? -1).ToList());
+    }
+
+    /// <summary>
+    /// Builds one report row. <paramref name="record"/> is null for a film that has never been
+    /// measured; its tracks then come from Jellyfin's stream metadata instead of the store.
+    /// </summary>
+    private ReportRow BuildReportRow(
+        Guid id,
+        string name,
+        string kind,
+        double durationSeconds,
+        TrackRecord? record,
+        ItemProfileOverride? over,
+        NormalizationProfile profile)
+    {
+        var row = new ReportRow
+        {
+            ItemId = id.ToString("N"),
+            Name = name,
+            Kind = kind,
+            Minutes = Math.Round(durationSeconds / 60.0, 1),
+
+            // "NotMeasured" is a report-only state; the stored TrackState enum has no such
+            // member because nothing is stored for a film that was never touched.
+            State = record is not null ? record.RollupState().ToString() : "NotMeasured",
+            HasOverride = over is not null,
+            Excluded = over?.Excluded ?? false,
+            Note = record?.LastError ?? record?.SkipReason
+        };
+
+        IReadOnlyList<AudioTrackInfo> tracks = record is not null && record.AudioTracks.Count > 0
+            ? record.AudioTracks
+            : _service.PeekTracks(id);
+
+        // Names are allocated per item so two tracks of one film never collide, and the
+        // report shows exactly what the player will display.
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var track in tracks)
+        {
+            var plannedTitle = OutputNaming.BuildTitle(profile, track);
+            if (!taken.Add(plannedTitle))
+            {
+                plannedTitle += "-" + track.StreamIndex.ToString(CultureInfo.InvariantCulture);
+                taken.Add(plannedTitle);
+            }
+
+            row.Tracks.Add(new TrackRow
+            {
+                StreamIndex = track.StreamIndex,
+                Label = track.Label,
+                Language = track.Language,
+                Channels = track.Channels,
+                IsDefault = track.IsDefault,
+                IsCommentary = track.IsCommentary,
+                Selected = track.Selected,
+                SelectionIsExplicit = track.SelectionIsExplicit,
+                SourceLufs = track.Source?.IntegratedLufs,
+                SourceRangeLu = track.Source?.LoudnessRangeLu,
+                SourceLowLufs = track.Source?.RangeLowLufs,
+                SourceHighLufs = track.Source?.RangeHighLufs,
+                SourcePeakDb = track.Source?.TruePeakDb,
+                SourceIsEstimate = track.Source?.IsEstimate ?? false,
+                ResultRangeLu = track.Result?.LoudnessRangeLu,
+                PlannedTitle = plannedTitle,
+                State = track.State.ToString(),
+                OutputMb = Math.Round(track.OutputSize / 1024.0 / 1024.0, 1),
+                OutputPath = track.OutputPath,
+                Note = track.LastError ?? track.SkipReason
+            });
+        }
+
+        row.SelectedCount = row.Tracks.Count(t => t.Selected);
+
+        // The collapsed row summarises the selected tracks, falling back to the worst
+        // track so a film with nothing selected still shows why it might be worth doing.
+        var headline = row.Tracks.Where(t => t.Selected && t.SourceRangeLu.HasValue).ToList();
+        if (headline.Count == 0)
+        {
+            headline = row.Tracks.Where(t => t.SourceRangeLu.HasValue).ToList();
+        }
+
+        var worst = headline.OrderByDescending(t => t.SourceRangeLu ?? -1).FirstOrDefault();
+        if (worst is not null)
+        {
+            row.SourceTrack = worst.Label;
+            row.SourceLufs = worst.SourceLufs;
+            row.SourceRangeLu = worst.SourceRangeLu;
+            row.SourceLowLufs = worst.SourceLowLufs;
+            row.SourceHighLufs = worst.SourceHighLufs;
+            row.SourcePeakDb = worst.SourcePeakDb;
+            row.SourceIsEstimate = worst.SourceIsEstimate;
+            row.ResultRangeLu = worst.ResultRangeLu;
+            row.OutputMb = Math.Round(row.Tracks.Sum(t => t.OutputMb), 1);
+            row.OutputPath = row.Tracks.FirstOrDefault(t => t.OutputPath is not null)?.OutputPath;
+        }
+        else
+        {
+            // Nothing measured yet, but the tracks are known - show which one would be used.
+            row.SourceTrack = row.Tracks.FirstOrDefault(t => t.Selected)?.Label;
+        }
+
+        if (row.SourceRangeLu.HasValue && row.ResultRangeLu.HasValue)
+        {
+            row.RangeImprovement = Math.Round(row.SourceRangeLu.Value - row.ResultRangeLu.Value, 1);
+        }
+
+        return row;
     }
 
     /// <summary>Gets the queue status.</summary>

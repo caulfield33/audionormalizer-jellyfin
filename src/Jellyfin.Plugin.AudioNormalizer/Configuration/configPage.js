@@ -88,6 +88,13 @@
         return Number(value).toFixed(digits === undefined ? 1 : digits);
     }
 
+    // A quick scan samples the film, so its numbers are approximate. Marking them beats
+    // showing an estimate that looks exactly like a full measurement.
+    function numEst(value, isEstimate, digits) {
+        var s = num(value, digits);
+        return isEstimate && s !== '—' ? '~' + s : s;
+    }
+
     function stateLabel(state) {
         var key = 'state.' + state;
         var text = t(key);
@@ -125,6 +132,10 @@
             page.querySelector('#anDelay').value = p.ManualDelayMs;
 
             page.querySelector('#anParallel').value = config.MaxParallelJobs;
+            page.querySelector('#anQuickScan').checked = !!config.QuickScan;
+            page.querySelector('#anQuickWindows').value = config.QuickScanWindows;
+            page.querySelector('#anQuickCoverage').value = config.QuickScanCoveragePercent;
+            page.querySelector('#anSelectedOnly').checked = config.MeasureSelectedTracksOnly !== false;
             page.querySelector('#anPause').checked = !!config.PauseWhilePlaybackActive;
             page.querySelector('#anDryRun').checked = !!config.DryRun;
             page.querySelector('#anLogCommands').checked = !!config.LogFfmpegCommands;
@@ -167,6 +178,10 @@
             config.GlobalProfile = p;
 
             config.MaxParallelJobs = parseInt(page.querySelector('#anParallel').value, 10);
+            config.QuickScan = page.querySelector('#anQuickScan').checked;
+            config.QuickScanWindows = parseInt(page.querySelector('#anQuickWindows').value, 10);
+            config.QuickScanCoveragePercent = parseInt(page.querySelector('#anQuickCoverage').value, 10);
+            config.MeasureSelectedTracksOnly = page.querySelector('#anSelectedOnly').checked;
             config.PauseWhilePlaybackActive = page.querySelector('#anPause').checked;
             config.DryRun = page.querySelector('#anDryRun').checked;
             config.LogFfmpegCommands = page.querySelector('#anLogCommands').checked;
@@ -377,17 +392,17 @@
             tr.appendChild(cell('', 'right'));
             tr.appendChild(cell('', 'center'));
             tr.appendChild(cell(track.Selected ? track.PlannedTitle : '—'));
-            tr.appendChild(cell(num(track.SourceLufs), 'right'));
+            tr.appendChild(cell(numEst(track.SourceLufs, track.SourceIsEstimate), 'right'));
 
-            var rangeCell = cell(num(track.SourceRangeLu), 'right');
+            var rangeCell = cell(numEst(track.SourceRangeLu, track.SourceIsEstimate), 'right');
             if (track.SourceRangeLu !== null && track.SourceRangeLu >= 18) {
                 rangeCell.style.color = '#e06c3b';
             }
             tr.appendChild(rangeCell);
 
-            tr.appendChild(cell(num(track.SourceLowLufs), 'right'));
-            tr.appendChild(cell(num(track.SourceHighLufs), 'right'));
-            tr.appendChild(cell(num(track.SourcePeakDb), 'right'));
+            tr.appendChild(cell(numEst(track.SourceLowLufs, track.SourceIsEstimate), 'right'));
+            tr.appendChild(cell(numEst(track.SourceHighLufs, track.SourceIsEstimate), 'right'));
+            tr.appendChild(cell(numEst(track.SourcePeakDb, track.SourceIsEstimate), 'right'));
             tr.appendChild(cell(track.ResultRangeLu === null ? '—' : num(track.ResultRangeLu), 'right'));
             tr.appendChild(cell(track.Selected ? stateLabel(track.State) : '—'));
             tr.appendChild(cell(track.OutputMb ? num(track.OutputMb) : '—', 'right'));
@@ -463,7 +478,10 @@
             body.innerHTML = '';
 
             if (!rows.length) {
-                page.querySelector('#anReportEmpty').textContent = t('report.empty');
+                // The table now lists every candidate film, scanned or not, so an empty one
+                // means either the libraries hold nothing or the filter is hiding it all.
+                page.querySelector('#anReportEmpty').textContent =
+                    only ? t('report.emptyFiltered') : t('report.empty');
                 return;
             }
             page.querySelector('#anReportEmpty').textContent = '';
@@ -502,9 +520,9 @@
                 tr.appendChild(countCell);
 
                 tr.appendChild(cell(r.SourceTrack || '—'));
-                tr.appendChild(cell(num(r.SourceLufs), 'right'));
+                tr.appendChild(cell(numEst(r.SourceLufs, r.SourceIsEstimate), 'right'));
 
-                var rangeCell = cell(num(r.SourceRangeLu), 'right');
+                var rangeCell = cell(numEst(r.SourceRangeLu, r.SourceIsEstimate), 'right');
                 if (r.SourceRangeLu !== null && r.SourceRangeLu >= 18) {
                     rangeCell.style.color = '#e06c3b';
                     rangeCell.style.fontWeight = '600';
@@ -514,10 +532,10 @@
 
                 // The two ends of the range: roughly where the dialogue sits and where the
                 // loud scenes sit. This is the min/max the range is measured between.
-                tr.appendChild(cell(num(r.SourceLowLufs), 'right'));
-                tr.appendChild(cell(num(r.SourceHighLufs), 'right'));
+                tr.appendChild(cell(numEst(r.SourceLowLufs, r.SourceIsEstimate), 'right'));
+                tr.appendChild(cell(numEst(r.SourceHighLufs, r.SourceIsEstimate), 'right'));
 
-                tr.appendChild(cell(num(r.SourcePeakDb), 'right'));
+                tr.appendChild(cell(numEst(r.SourcePeakDb, r.SourceIsEstimate), 'right'));
                 tr.appendChild(cell(r.ResultRangeLu === null ? '—' : num(r.ResultRangeLu), 'right'));
                 tr.appendChild(cell(stateLabel(r.State) + (r.Excluded ? t('report.excluded') : '')));
                 tr.appendChild(cell(r.OutputMb ? num(r.OutputMb) : '—', 'right'));
@@ -525,6 +543,20 @@
                 var actions = document.createElement('td');
                 actions.style.textAlign = 'right';
                 actions.style.whiteSpace = 'nowrap';
+
+                // Measuring one film. The tracks and the name are listed before any scan, so
+                // this is how a single title gets its numbers without running the whole library.
+                var measure = document.createElement('button');
+                measure.className = 'raised';
+                measure.style.marginLeft = '4px';
+                measure.textContent = t('btn.measure');
+                measure.title = t('btn.measure.tip');
+                measure.addEventListener('click', function () {
+                    api('POST', 'Analyze', { ItemIds: [r.ItemId] }).then(function () {
+                        loadStatus(page);
+                    });
+                });
+                actions.appendChild(measure);
 
                 var build = document.createElement('button');
                 build.className = 'raised';

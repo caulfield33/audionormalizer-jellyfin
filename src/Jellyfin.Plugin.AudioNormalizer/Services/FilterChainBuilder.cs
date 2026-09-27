@@ -76,6 +76,125 @@ public static class FilterChainBuilder
     }
 
     /// <summary>
+    /// Builds an analysis graph over sampled windows instead of the whole film. Each window is
+    /// a separate ffmpeg input (<c>-ss</c>/<c>-t</c>), so only those regions are read and
+    /// decoded; the windows are concatenated per track and measured as one continuous signal.
+    /// </summary>
+    /// <remarks>
+    /// Concatenating and measuring once matters. Measuring each window on its own and averaging
+    /// the results would be badly wrong: a single 30-second window of dialogue has a range of a
+    /// few LU, and so does a window of explosions, so the average says "4 LU" about a film whose
+    /// real spread is 25. Over the concatenation ebur128 sees quiet and loud passages in the
+    /// same distribution and its LRA reflects the gap between them.
+    /// </remarks>
+    /// <param name="streamIndexes">Absolute stream indexes to measure.</param>
+    /// <param name="windowCount">How many windows each track is made of.</param>
+    /// <param name="outputLabels">Receives the output pad label per track.</param>
+    /// <param name="filterOrdinals">
+    /// Receives the <c>Parsed_ebur128_N</c> number ffmpeg will give each track's measurement.
+    /// The concat filters share that numbering, so it is not simply the track position.
+    /// </param>
+    /// <returns>The filter_complex string.</returns>
+    public static string BuildSampledAnalysisGraph(
+        IReadOnlyList<int> streamIndexes,
+        int windowCount,
+        out List<string> outputLabels,
+        out List<int> filterOrdinals)
+    {
+        outputLabels = new List<string>(streamIndexes.Count);
+        filterOrdinals = new List<int>(streamIndexes.Count);
+        var sb = new StringBuilder();
+
+        for (var i = 0; i < streamIndexes.Count; i++)
+        {
+            var label = "m" + i.ToString(Inv);
+            outputLabels.Add(label);
+
+            // ffmpeg numbers every filter in the graph in parse order, so each track costs two:
+            // the concat at 2i and the ebur128 at 2i+1.
+            filterOrdinals.Add((2 * i) + 1);
+
+            if (i > 0)
+            {
+                sb.Append(';');
+            }
+
+            for (var w = 0; w < windowCount; w++)
+            {
+                sb.Append(string.Create(Inv, $"[{w}:{streamIndexes[i]}]"));
+            }
+
+            sb.Append(string.Create(
+                Inv,
+                $"concat=n={windowCount}:v=0:a=1[c{i}];[c{i}]ebur128=peak=true:framelog=quiet[{label}]"));
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Plans the windows a quick scan listens to: where each starts, and how long each lasts.
+    /// </summary>
+    /// <remarks>
+    /// Coverage is the parameter rather than a fixed window length, because a fixed length means
+    /// a different fraction of every film - 30 seconds times twelve is 5% of a feature but 13%
+    /// of an episode. Window length is derived so the same share of every title is heard.
+    /// </remarks>
+    /// <param name="durationSeconds">Length of the film.</param>
+    /// <param name="windowCount">How many windows to spread over it.</param>
+    /// <param name="coveragePercent">How much of the film to listen to, as a percentage.</param>
+    /// <param name="windowSeconds">Receives the length of each window.</param>
+    /// <returns>The window start offsets, or an empty list when a full scan is the better deal.</returns>
+    public static IReadOnlyList<double> SampleOffsets(
+        double durationSeconds,
+        int windowCount,
+        double coveragePercent,
+        out double windowSeconds)
+    {
+        windowSeconds = 0;
+
+        var coverage = Math.Clamp(coveragePercent, 1.0, 100.0) / 100.0;
+        var count = Math.Clamp(windowCount, 2, 60);
+
+        // Past half the film the seeking and the duplicated container reads eat the saving, and
+        // a full scan is exact. Not worth the approximation.
+        if (durationSeconds <= 0 || coverage >= 0.5)
+        {
+            return Array.Empty<double>();
+        }
+
+        windowSeconds = durationSeconds * coverage / count;
+
+        // Very short windows measure attack transients rather than scenes, and each one costs a
+        // seek. Trade window count for length rather than dropping below ten seconds.
+        if (windowSeconds < 10.0)
+        {
+            count = Math.Max(2, (int)Math.Floor(durationSeconds * coverage / 10.0));
+            windowSeconds = durationSeconds * coverage / count;
+        }
+
+        // The first and last 5% are titles, logos and end credits: measuring silence or a
+        // loudness-normalised studio sting would skew the result for no gain.
+        var from = durationSeconds * 0.05;
+        var span = (durationSeconds * 0.90) - windowSeconds;
+        if (span <= 0)
+        {
+            windowSeconds = 0;
+            return Array.Empty<double>();
+        }
+
+        var offsets = new List<double>(count);
+        var step = span / (count - 1);
+        for (var i = 0; i < count; i++)
+        {
+            offsets.Add(Math.Round(from + (i * step), 3));
+        }
+
+        windowSeconds = Math.Round(windowSeconds, 3);
+        return offsets;
+    }
+
+    /// <summary>
     /// Builds the part of the chain that runs before loudnorm.
     /// </summary>
     /// <param name="profile">Settings.</param>

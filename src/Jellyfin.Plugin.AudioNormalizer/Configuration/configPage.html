@@ -227,6 +227,46 @@
                     </div>
 
                     <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="anSelectedOnly" />
+                        <span data-an-i18n="chk.selectedOnly">Measure only the tracks picked for normalizing</span>
+                    </label>
+                    <div class="fieldDescription" data-an-i18n="desc.selectedOnly">
+                        A remux often carries five or six audio tracks. Measuring all of them costs a
+                        full decode each to produce numbers nobody uses. This loses no accuracy.
+                    </div>
+
+                    <label class="checkboxContainer">
+                        <input is="emby-checkbox" type="checkbox" id="anQuickScan" />
+                        <span data-an-i18n="chk.quickScan">Quick scan: listen to part of the film instead of all of it</span>
+                    </label>
+                    <div class="fieldDescription" data-an-i18n="desc.quickScan">
+                        Measuring costs as much as encoding, because both decode every sample of the
+                        track, so hearing less is the only way to make it faster. Sampled numbers are
+                        shown with a ~ and are never allowed to skip a film on their own.
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="anQuickCoverage" data-an-i18n="lbl.quickCoverage">How much of the film to listen to, %</label>
+                        <input is="emby-input" type="number" id="anQuickCoverage" step="1" min="5" max="49" />
+                        <div class="fieldDescription" data-an-i18n="desc.quickCoverage">
+                            The accuracy dial. Sampling understates the loudness range because the
+                            windows can miss the loudest scene, and the less is covered the more it
+                            understates. A third is enough to tell a 25 LU action mix from an even
+                            one. 50 or more falls back to a full scan, which is exact and not much dearer.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="anQuickWindows" data-an-i18n="lbl.quickWindows">Split into this many windows</label>
+                        <input is="emby-input" type="number" id="anQuickWindows" step="1" min="2" max="60" />
+                        <div class="fieldDescription" data-an-i18n="desc.quickWindows">
+                            Window length follows from the coverage and the film's length, so this only
+                            controls how finely the sampling is spread. More windows catch more of the
+                            quiet-to-loud alternation; each one costs a seek.
+                        </div>
+                    </div>
+
+                    <label class="checkboxContainer">
                         <input is="emby-checkbox" type="checkbox" id="anPause" />
                         <span data-an-i18n="chk.pause">Pause while somebody is watching</span>
                     </label>

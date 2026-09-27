@@ -145,15 +145,72 @@ public sealed class NormalizationService
         StampItem(record, ctx);
         MergeTracks(record, ctx.Tracks);
 
-        var indexes = record.AudioTracks.Select(t => t.StreamIndex).ToList();
-        var graph = FilterChainBuilder.BuildMultiTrackAnalysisGraph(indexes, out var labels);
+        var config = Config;
 
-        var args = new List<string>
+        // Only the tracks that will actually be normalized. A remux with six audio tracks
+        // otherwise costs six full decodes to produce five numbers nobody looks at. Falls back
+        // to everything when the selection is empty, so the item is not left with no data.
+        var measurable = config.MeasureSelectedTracksOnly
+            ? record.AudioTracks.Where(t => t.Selected).ToList()
+            : record.AudioTracks.ToList();
+        if (measurable.Count == 0)
         {
-            "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info",
-            "-i", ctx.Item.Path,
-            "-filter_complex", graph
-        };
+            measurable = record.AudioTracks.ToList();
+        }
+
+        var indexes = measurable.Select(t => t.StreamIndex).ToList();
+        if (indexes.Count == 0)
+        {
+            return new WorkOutcome { Message = "no audio tracks to measure" };
+        }
+
+        // Quick scan listens to a share of the film spread over several windows instead of
+        // decoding all of it. Analysis is not cheaper than encoding - both decode every sample
+        // of the track - so hearing less is the only lever. See PluginConfiguration.QuickScan.
+        //
+        // windowSeconds is declared up front rather than with 'out var' inside the ternary:
+        // only one branch assigns it, so the compiler could not prove it was ever set.
+        double windowSeconds = 0;
+        var offsets = config.QuickScan
+            ? FilterChainBuilder.SampleOffsets(
+                ctx.DurationSeconds,
+                config.QuickScanWindows,
+                config.QuickScanCoveragePercent,
+                out windowSeconds)
+            : Array.Empty<double>();
+        var sampled = offsets.Count > 0;
+
+        string graph;
+        List<string> labels;
+        List<int> ordinals;
+        var args = new List<string> { "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info" };
+
+        if (sampled)
+        {
+            graph = FilterChainBuilder.BuildSampledAnalysisGraph(indexes, offsets.Count, out labels, out ordinals);
+
+            // One input per window. Seeking before -i uses the container index, so only these
+            // regions are read off disk rather than the whole file.
+            foreach (var offset in offsets)
+            {
+                args.Add("-ss");
+                args.Add(offset.ToString("F3", CultureInfo.InvariantCulture));
+                args.Add("-t");
+                args.Add(windowSeconds.ToString("F3", CultureInfo.InvariantCulture));
+                args.Add("-i");
+                args.Add(ctx.Item.Path);
+            }
+        }
+        else
+        {
+            graph = FilterChainBuilder.BuildMultiTrackAnalysisGraph(indexes, out labels);
+            ordinals = Enumerable.Range(0, indexes.Count).ToList();
+            args.Add("-i");
+            args.Add(ctx.Item.Path);
+        }
+
+        args.Add("-filter_complex");
+        args.Add(graph);
 
         foreach (var label in labels)
         {
@@ -167,9 +224,12 @@ public sealed class NormalizationService
 
         var result = await _ffmpeg.RunAsync(
             args,
-            ctx.DurationSeconds,
+
+            // Progress is driven by the output timestamp, which for a sampled run only spans
+            // the windows, not the film.
+            sampled ? offsets.Count * windowSeconds : ctx.DurationSeconds,
             progress,
-            Config.ProcessNiceness,
+            config.ProcessNiceness,
             TimeoutFor(ctx.DurationSeconds),
             cancellationToken).ConfigureAwait(false);
 
@@ -193,7 +253,7 @@ public sealed class NormalizationService
         var applied = 0;
         for (var i = 0; i < indexes.Count; i++)
         {
-            if (!measured.TryGetValue(i, out var m))
+            if (!measured.TryGetValue(ordinals[i], out var m))
             {
                 continue;
             }
@@ -204,6 +264,7 @@ public sealed class NormalizationService
                 continue;
             }
 
+            m.IsEstimate = sampled;
             track.Source = m;
             track.AnalyzedUtc = DateTime.UtcNow;
             track.LastError = null;
@@ -220,7 +281,8 @@ public sealed class NormalizationService
         _store.Put(record);
 
         _logger.LogInformation(
-            "Audio Normalizer: measured {Count} track(s) of {Name}",
+            "Audio Normalizer: {Mode} measured {Count} track(s) of {Name}",
+            sampled ? "quick scan" : "full scan",
             applied,
             ctx.Item.Name);
 
@@ -597,6 +659,26 @@ public sealed class NormalizationService
         }
     }
 
+    /// <summary>
+    /// The audio tracks of an item as Jellyfin already knows them, with the current selection
+    /// rule applied. No ffmpeg, no filesystem access and no exclusion check, so the report can
+    /// list a film that has never been measured and still let its tracks be ticked.
+    /// </summary>
+    /// <param name="itemId">The item.</param>
+    /// <returns>The tracks, or an empty list when the streams cannot be read.</returns>
+    public IReadOnlyList<AudioTrackInfo> PeekTracks(Guid itemId)
+    {
+        try
+        {
+            return SourceTrackSelector.BuildTrackList(_mediaSourceManager.GetMediaStreams(itemId), Config, itemId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Audio Normalizer: could not read audio streams for {ItemId}", itemId);
+            return Array.Empty<AudioTrackInfo>();
+        }
+    }
+
     /// <summary>Lists items the scheduled tasks should consider.</summary>
     /// <returns>Candidate items.</returns>
     public IReadOnlyList<BaseItem> GetCandidateItems()
@@ -717,7 +799,11 @@ public sealed class NormalizationService
         }
 
         var sourceRange = track.Source?.LoudnessRangeLu ?? 15.0;
-        if (sourceRange < profile.SkipIfDynamicRangeBelowLu)
+
+        // A quick scan samples the film, so its range is a floor rather than the truth: windows
+        // can miss the loudest scene entirely. Letting an estimate skip a film would quietly
+        // drop exactly the titles this is meant to find, so only a full measurement may skip.
+        if (sourceRange < profile.SkipIfDynamicRangeBelowLu && !(track.Source?.IsEstimate ?? false))
         {
             track.State = TrackState.Skipped;
             track.SkipReason = string.Create(

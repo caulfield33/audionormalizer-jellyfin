@@ -36,6 +36,39 @@ public class PluginConfiguration : BasePluginConfiguration
     public int MaxParallelJobs { get; set; } = 1;
 
     /// <summary>
+    /// Gets or sets a value indicating whether measurement covers only the tracks picked for
+    /// normalizing. A remux often carries five or six audio tracks; measuring all of them costs
+    /// a full decode each while only the selected one is ever used. This loses no accuracy at
+    /// all - it just stops decoding tracks nobody asked about. Falls back to every track when
+    /// nothing is selected, so an item still gets numbers.
+    /// </summary>
+    public bool MeasureSelectedTracksOnly { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether measurement samples the film instead of decoding
+    /// all of it. Analysis and encoding cost nearly the same, because both decode every sample
+    /// of the track - for a TrueHD or DTS-HD source that decode is the whole bill - so listening
+    /// to less of the film is the only way to make measurement faster.
+    /// </summary>
+    public bool QuickScan { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets how much of each film a quick scan listens to, as a percentage. This is the
+    /// accuracy dial: sampling understates the loudness range, because the windows can miss the
+    /// loudest scene, and the less is covered the more it understates. A third of the film is
+    /// enough to tell a 25 LU action mix from an even 9 LU one while costing a third of the
+    /// decode. Half or more falls back to a full scan, which is exact and not much dearer.
+    /// </summary>
+    public int QuickScanCoveragePercent { get; set; } = 33;
+
+    /// <summary>
+    /// Gets or sets how many windows that coverage is split into. Window length follows from the
+    /// coverage and the film's length, so this only controls how finely the film is spread over.
+    /// More windows catch more of the quiet/loud alternation; each one costs a seek.
+    /// </summary>
+    public int QuickScanWindows { get; set; } = 20;
+
+    /// <summary>
     /// Gets or sets a value indicating whether the queue pauses while somebody is watching
     /// something. Audio encoding is cheap per job but a library-wide run is not.
     /// </summary>

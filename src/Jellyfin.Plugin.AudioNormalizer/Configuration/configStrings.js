@@ -90,6 +90,22 @@
 
             'sec.background': 'Background work',
             'lbl.parallel': 'Parallel jobs',
+            'chk.selectedOnly': 'Measure only the tracks picked for normalizing',
+            'desc.selectedOnly': 'A remux often carries five or six audio tracks. Measuring all of '
+                + 'them costs a full decode each to produce numbers nobody uses. This loses no accuracy.',
+            'chk.quickScan': 'Quick scan: listen to part of the film instead of all of it',
+            'desc.quickScan': 'Measuring costs as much as encoding, because both decode every sample '
+                + 'of the track, so hearing less is the only way to make it faster. Sampled numbers '
+                + 'are shown with a ~ and are never allowed to skip a film on their own.',
+            'lbl.quickCoverage': 'How much of the film to listen to, %',
+            'desc.quickCoverage': 'The accuracy dial. Sampling understates the loudness range because '
+                + 'the windows can miss the loudest scene, and the less is covered the more it '
+                + 'understates. A third is enough to tell a 25 LU action mix from an even one. '
+                + '50 or more falls back to a full scan, which is exact and not much dearer.',
+            'lbl.quickWindows': 'Split into this many windows',
+            'desc.quickWindows': 'Window length follows from the coverage and the length of the film, '
+                + 'so this only controls how finely the sampling is spread. More windows catch more '
+                + 'of the quiet-to-loud alternation; each one costs a seek.',
             'chk.pause': 'Pause while somebody is watching',
             'chk.dryRun': 'Dry run: write nothing, only report what would be done',
             'chk.logCommands': 'Write the full ffmpeg command to the server log',
@@ -138,7 +154,8 @@
             'th.state': 'State',
             'th.mb': 'MB',
 
-            'report.empty': 'Nothing here yet. Run "Measure the whole library" - it changes nothing on disk.',
+            'report.empty': 'No films found. Check the enabled libraries and the minimum duration in the settings.',
+            'report.emptyFiltered': 'Nothing exceeds the target range. Untick the filter above to see every film.',
             'report.showTracks': 'Show the audio tracks',
             'report.noTracksSelected': 'No track selected - nothing will be created',
             'report.rangeHigh': 'A wide gap between quiet and loud - this film is worth processing',
@@ -153,13 +170,15 @@
             'unit.minutes': '{n} min',
             'unit.hours': '{n} h',
 
-            'track.notScanned': 'Audio tracks have not been scanned yet. Run "Measure the whole library".',
+            'track.notScanned': 'Jellyfin reports no audio tracks in this file.',
             'track.normalizeThis': 'Normalize this track',
             'track.commentary': ' commentary',
             'track.manualChoice': 'Tracks were chosen by hand. ',
             'track.autoChoice': 'The track was chosen automatically by the rule in the settings. ',
             'track.resetAuto': 'Restore the automatic choice',
 
+            'btn.measure': 'Measure',
+            'btn.measure.tip': 'Measure the loudness of the tracks in this film only',
             'btn.build': 'Build',
             'btn.rebuild': 'Rebuild',
             'btn.delete': 'Delete',
@@ -229,6 +248,7 @@
             'state.Skipped': 'skipped',
             'state.Failed': 'failed',
             'state.Stale': 'stale',
+            'state.NotMeasured': 'not measured',
             'state.Unknown': 'unknown'
         },
 
@@ -309,6 +329,23 @@
 
             'sec.background': 'Робота у фоні',
             'lbl.parallel': 'Паралельних завдань',
+            'chk.selectedOnly': 'Міряти лише доріжки, обрані для нормалізації',
+            'desc.selectedOnly': 'Ремукс часто несе п’ять-шість аудіодоріжок. Виміряти всі — це '
+                + 'повний декод кожної заради чисел, якими ніхто не користується. Точність від цього '
+                + 'не страждає.',
+            'chk.quickScan': 'Швидкий скан: слухати частину фільму замість усього',
+            'desc.quickScan': 'Вимірювання коштує стільки ж, скільки кодування, бо обидва декодують '
+                + 'доріжку повністю — тож слухати менше це єдиний важіль. Числа з вибірки позначені '
+                + 'знаком ~ і самі по собі ніколи не пропускають фільм.',
+            'lbl.quickCoverage': 'Яку частину фільму слухати, %',
+            'desc.quickCoverage': 'Регулятор точності. Вибірка занижує розмах гучності, бо вікна '
+                + 'можуть не влучити в найгучнішу сцену, і чим менше покриття, тим сильніше заниження. '
+                + 'Третини досить, щоб відрізнити бойовик на 25 LU від рівного мікса. 50 і більше — '
+                + 'це вже повний прохід, точний і не набагато дорожчий.',
+            'lbl.quickWindows': 'Розбити на стільки вікон',
+            'desc.quickWindows': 'Довжина вікна виводиться з покриття й тривалості фільму, тож це лише '
+                + 'про те, наскільки дрібно розсіяти вибірку. Більше вікон ловлять більше чергувань '
+                + 'тихого й гучного; кожне коштує одного пошуку.',
             'chk.pause': 'Ставити на паузу, поки хтось дивиться',
             'chk.dryRun': 'Тестовий прогін: нічого не записувати, лише показати що буде зроблено',
             'chk.logCommands': 'Писати повну команду ffmpeg у лог сервера',
@@ -358,7 +395,8 @@
             'th.state': 'Стан',
             'th.mb': 'МБ',
 
-            'report.empty': 'Поки порожньо. Запустіть «Виміряти всю бібліотеку» — це нічого не змінює на диску.',
+            'report.empty': 'Фільмів не знайдено. Перевірте дозволені медіатеки й мінімальну тривалість у налаштуваннях.',
+            'report.emptyFiltered': 'Нічого не перевищує цільову різницю. Зніміть галочку вище, щоб побачити всі фільми.',
             'report.showTracks': 'Показати аудіодоріжки',
             'report.noTracksSelected': 'Жодної доріжки не обрано — нічого не буде створено',
             'report.rangeHigh': 'Велика різниця між тихим і гучним — цей фільм вартий обробки',
@@ -373,13 +411,15 @@
             'unit.minutes': '{n} хв',
             'unit.hours': '{n} год',
 
-            'track.notScanned': 'Аудіодоріжки ще не проскановано. Запустіть «Виміряти всю бібліотеку».',
+            'track.notScanned': 'Jellyfin не бачить у цьому файлі жодної аудіодоріжки.',
             'track.normalizeThis': 'Нормалізувати цю доріжку',
             'track.commentary': ' коментар',
             'track.manualChoice': 'Доріжки обрано вручну. ',
             'track.autoChoice': 'Доріжку обрано автоматично за правилом із налаштувань. ',
             'track.resetAuto': 'Повернути автоматичний вибір',
 
+            'btn.measure': 'Виміряти',
+            'btn.measure.tip': 'Виміряти гучність доріжок лише цього фільму',
             'btn.build': 'Створити',
             'btn.rebuild': 'Перебудувати',
             'btn.delete': 'Видалити',
@@ -449,6 +489,7 @@
             'state.Skipped': 'пропущено',
             'state.Failed': 'помилка',
             'state.Stale': 'застаріло',
+            'state.NotMeasured': 'не виміряно',
             'state.Unknown': 'невідомо'
         }
     };

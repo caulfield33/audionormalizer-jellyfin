@@ -22,6 +22,13 @@ public class LoudnessMeasurement
     /// <summary>Gets or sets the true peak, dBTP.</summary>
     public double TruePeakDb { get; set; }
 
+    /// <summary>
+    /// Gets or sets a value indicating whether this came from a sampled quick scan rather than
+    /// the whole track. Estimates are fine for deciding which film to fix and are never allowed
+    /// to skip one.
+    /// </summary>
+    public bool IsEstimate { get; set; }
+
     /// <summary>Gets the peak-to-loudness ratio, dB. High values mean big sudden bangs.</summary>
     [JsonIgnore]
     public double PeakToLoudnessDb => TruePeakDb - IntegratedLufs;

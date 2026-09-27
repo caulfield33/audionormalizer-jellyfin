@@ -273,17 +273,34 @@ public sealed class JobQueue : IHostedService, IDisposable
             // Wait out any active playback before starting. Audio jobs are not heavy, but a
             // library-wide run competing with a live transcode is exactly the kind of thing
             // that makes a server feel broken.
-            while (!token.IsCancellationRequested && ShouldHoldForPlayback())
+            var holder = HoldingSession();
+            if (holder is not null)
             {
-                _pausedForPlayback = true;
-                try
+                var heldSince = DateTime.UtcNow;
+
+                // Logged because a session that never sends a stop pins the queue for hours and
+                // nothing else records it: the page only shows the flag while somebody is
+                // looking at it, so overnight the stall is invisible.
+                _logger.LogInformation("Audio Normalizer: holding the queue, {Device} is playing", holder);
+
+                while (!token.IsCancellationRequested && holder is not null)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(20), token).ConfigureAwait(false);
+                    _pausedForPlayback = true;
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(20), token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+
+                    holder = HoldingSession();
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
+
+                _logger.LogInformation(
+                    "Audio Normalizer: resuming, queue was held for {Minutes:F1} min",
+                    (DateTime.UtcNow - heldSince).TotalMinutes);
             }
 
             _pausedForPlayback = false;
@@ -356,24 +373,43 @@ public sealed class JobQueue : IHostedService, IDisposable
             }
 
             _store.Flush();
+
+            // How long a film actually took. Without this there is no way to tell a slow
+            // encode from a queue that spent the night paused.
+            _logger.LogInformation(
+                "Audio Normalizer: {Kind} for {Name} took {Minutes:F1} min",
+                job.Kind,
+                job.ItemName,
+                (DateTime.UtcNow - job.StartedUtc).TotalMinutes);
         }
     }
 
-    private bool ShouldHoldForPlayback()
+    /// <summary>
+    /// The device currently blocking the queue, or null when nothing is playing. Returns the
+    /// name rather than a bool so the hold can say who caused it.
+    /// </summary>
+    private string? HoldingSession()
     {
         if (!Config.PauseWhilePlaybackActive)
         {
-            return false;
+            return null;
         }
 
         try
         {
-            return _sessionManager.Sessions.Any(s => s.NowPlayingItem is not null && !(s.PlayState?.IsPaused ?? false));
+            var session = _sessionManager.Sessions
+                .FirstOrDefault(s => s.NowPlayingItem is not null && !(s.PlayState?.IsPaused ?? false));
+            if (session is null)
+            {
+                return null;
+            }
+
+            return string.IsNullOrEmpty(session.DeviceName) ? "a client" : session.DeviceName;
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Audio Normalizer: could not read sessions");
-            return false;
+            return null;
         }
     }
 }

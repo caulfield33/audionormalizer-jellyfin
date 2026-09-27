@@ -261,6 +261,7 @@ public sealed class FfmpegRunner
         using var timeoutCts = new CancellationTokenSource(timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
+        var started = DateTime.UtcNow;
         try
         {
             process.Start();
@@ -335,6 +336,18 @@ public sealed class FfmpegRunner
             result.StdErr = stdErr.ToString();
             result.StdOut = stdOut.ToString();
         }
+
+
+        // The realtime factor is the single most useful number when a library run feels slow:
+        // it separates a genuinely slow decode from a queue that was barely running. Same
+        // level as the command itself, so turning the option on gives both.
+        var elapsed = DateTime.UtcNow - started;
+        _logger.Log(
+            Plugin.Instance?.Configuration.LogFfmpegCommands == true ? LogLevel.Information : LogLevel.Debug,
+            "Audio Normalizer: ffmpeg exited {Code} after {Seconds:F0}s ({Factor:F1}x realtime)",
+            result.ExitCode,
+            elapsed.TotalSeconds,
+            totalSeconds > 0 ? totalSeconds / Math.Max(0.001, elapsed.TotalSeconds) : 0);
 
         CleanupProgressFile(progressFile);
         return result;
