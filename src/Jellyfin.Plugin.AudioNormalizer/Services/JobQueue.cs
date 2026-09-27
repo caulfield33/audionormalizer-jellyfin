@@ -332,7 +332,10 @@ public sealed class JobQueue : IHostedService, IDisposable
 
     private async Task RunJobAsync(QueuedJob job, CancellationToken token)
     {
-        job.StartedUtc = DateTime.UtcNow;
+        // Kept in a local as well: StartedUtc is nullable on the job, and the elapsed time is
+        // needed in the finally where unwrapping it again would only add noise.
+        var startedUtc = DateTime.UtcNow;
+        job.StartedUtc = startedUtc;
         _running[job.ItemId] = job;
 
         var progress = new Progress<double>(p => job.Progress = p);
@@ -380,7 +383,7 @@ public sealed class JobQueue : IHostedService, IDisposable
                 "Audio Normalizer: {Kind} for {Name} took {Minutes:F1} min",
                 job.Kind,
                 job.ItemName,
-                (DateTime.UtcNow - job.StartedUtc).TotalMinutes);
+                (DateTime.UtcNow - startedUtc).TotalMinutes);
         }
     }
 

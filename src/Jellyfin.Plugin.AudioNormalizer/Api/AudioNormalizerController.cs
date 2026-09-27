@@ -415,7 +415,7 @@ public class AudioNormalizerController : ControllerBase
         else
         {
             // Nothing measured yet, but the tracks are known - show which one would be used.
-            row.SourceTrack = row.Tracks.FirstOrDefault(t => t.Selected)?.Label;
+            row.SourceTrack = row.Tracks.FirstOrDefault(t => t.Selected)?.Label ?? string.Empty;
         }
 
         if (row.SourceRangeLu.HasValue && row.ResultRangeLu.HasValue)
