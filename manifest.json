@@ -9,22 +9,22 @@
         "imageUrl": "https://raw.githubusercontent.com/caulfield33/audionormalizer-jellyfin/master/icon.svg",
         "versions": [
         {
-            "version": "1.1.0.5",
-            "changelog": "Release 1.0.5 - https://github.com/caulfield33/audionormalizer-jellyfin/releases/tag/1.0.5",
+            "version": "1.1.0.6",
+            "changelog": "Release 1.0.6 - https://github.com/caulfield33/audionormalizer-jellyfin/releases/tag/1.0.6",
             "targetAbi": "10.11.0.0",
-            "sourceUrl": "https://github.com/caulfield33/audionormalizer-jellyfin/releases/download/1.0.5/audio-normalizer_1.1.0.5.zip",
-            "checksum": "ca8142e6784a80abb02c689d96590f33",
-            "timestamp": "2026-09-27T08:49:39Z",
+            "sourceUrl": "https://github.com/caulfield33/audionormalizer-jellyfin/releases/download/1.0.6/audio-normalizer_1.1.0.6.zip",
+            "checksum": "6cd5b43ec1bba816990048ddd11d971e",
+            "timestamp": "2026-09-27T09:50:14Z",
             "repositoryName": "Audio Normalizer",
             "repositoryUrl": "https://raw.githubusercontent.com/caulfield33/audionormalizer-jellyfin/master/manifest.json"
         },
         {
-            "version": "2.1.0.5",
-            "changelog": "Release 1.0.5 - https://github.com/caulfield33/audionormalizer-jellyfin/releases/tag/1.0.5",
+            "version": "2.1.0.6",
+            "changelog": "Release 1.0.6 - https://github.com/caulfield33/audionormalizer-jellyfin/releases/tag/1.0.6",
             "targetAbi": "12.0.0.0",
-            "sourceUrl": "https://github.com/caulfield33/audionormalizer-jellyfin/releases/download/1.0.5/audio-normalizer_2.1.0.5.zip",
-            "checksum": "fb984c93c939e3ee1fecb352c25e1c89",
-            "timestamp": "2026-09-27T08:49:33Z",
+            "sourceUrl": "https://github.com/caulfield33/audionormalizer-jellyfin/releases/download/1.0.6/audio-normalizer_2.1.0.6.zip",
+            "checksum": "e7130a60bb6a8625bfd231e396405422",
+            "timestamp": "2026-09-27T09:50:06Z",
             "repositoryName": "Audio Normalizer",
             "repositoryUrl": "https://raw.githubusercontent.com/caulfield33/audionormalizer-jellyfin/master/manifest.json"
         }
